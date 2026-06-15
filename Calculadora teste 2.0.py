@@ -109,7 +109,13 @@ if "mapa_regua_rev" not in st.session_state:
     st.session_state.mapa_regua_rev = 0
 if "pontos_controle" not in st.session_state:
     st.session_state.pontos_controle = []
+if "last_lat_calc" not in st.session_state:
+    st.session_state.last_lat_calc = None
 
+if "last_lon_calc" not in st.session_state:
+    st.session_state.last_lon_calc = None
+if "windgram_texto" not in st.session_state:
+    st.session_state.windgram_texto = ""
 
 # =====================================================
 # FUNÇÕES GERAIS
@@ -645,46 +651,38 @@ with aba_planejamento:
             placeholder="Ex: Campo Grande, Goiânia, Anápolis, Fazenda..."
         )
 
-        c_busca1, c_busca2 = st.columns(2)
+        if st.button("🔎 Pesquisar local"):
+            if busca.strip():
+                resultado = buscar_localidade(busca)
+                if resultado:
+                    st.session_state.lat = float(resultado["lat"])
+                    st.session_state.lon = float(resultado["lon"])
+                    st.session_state.centro_mapa = [st.session_state.lat, st.session_state.lon]
+                    st.session_state.mapa_planejamento_rev += 1
+                    st.success(resultado["nome"])
+                    st.rerun()
+                else:
+                    st.error("Local não encontrado.")
 
-        with c_busca1:
-            if st.button("🔎 Pesquisar local"):
-                if busca.strip():
-                    resultado = buscar_localidade(busca)
-
-                    if resultado:
-                        st.session_state.lat = float(resultado["lat"])
-                        st.session_state.lon = float(resultado["lon"])
-                        st.session_state.centro_mapa = [
-                            st.session_state.lat,
-                            st.session_state.lon,
-                        ]
-                        st.session_state.mapa_planejamento_rev += 1
-                        st.success(resultado["nome"])
-                        st.rerun()
-                    else:
-                        st.error("Local não encontrado.")
-
-        with c_busca2:
-            if st.button("📍 Buscar altitude/declinação"):
+        # =====================================================
+        # GATILHO AUTOMÁTICO DE ALTITUDE E DECLINAÇÃO
+        # =====================================================
+        if (st.session_state.get("last_lat_calc") != st.session_state.lat or 
+            st.session_state.get("last_lon_calc") != st.session_state.lon):
+            
+            with st.spinner("📍 Calculando altitude e declinação automática..."):
                 alt = buscar_altitude(st.session_state.lat, st.session_state.lon)
-
                 if alt is not None:
                     st.session_state.altitude_ft = round(alt, 0)
-                    st.session_state.mapa_planejamento_rev += 1
 
-                dec = calcular_declinacao(
-                    st.session_state.lat,
-                    st.session_state.lon,
-                    st.session_state.altitude_ft
-                )
-
+                dec = calcular_declinacao(st.session_state.lat, st.session_state.lon, st.session_state.altitude_ft)
                 if dec is not None:
                     st.session_state.declinacao = dec
-                else:
-                    st.warning("Não foi possível calcular a declinação automaticamente. Preencha manualmente.")
-
-                st.rerun()
+                
+            # Grava na memória para não rodar em loop
+            st.session_state.last_lat_calc = st.session_state.lat
+            st.session_state.last_lon_calc = st.session_state.lon
+            st.rerun()
 
         c1, c2, c3 = st.columns(3)
 
@@ -696,7 +694,8 @@ with aba_planejamento:
                 format="%.6f",
                 key=f"lat_planejamento_{st.session_state.mapa_planejamento_rev}",
             )
-
+            st.session_state.lat = float(lat)
+            
         with c2:
             lon = st.number_input(
                 "Longitude",
@@ -705,7 +704,8 @@ with aba_planejamento:
                 format="%.6f",
                 key=f"lon_planejamento_{st.session_state.mapa_planejamento_rev}",
             )
-
+            st.session_state.lon = float(lon)
+            
         with c3:
             altitude_alvo_ft = st.number_input(
                 "Altitude do alvo ft MSL",
@@ -713,10 +713,8 @@ with aba_planejamento:
                 step=50.0,
                 key=f"altitude_planejamento_{st.session_state.mapa_planejamento_rev}",
             )
+            st.session_state.altitude_ft = float(altitude_alvo_ft)
 
-        st.session_state.lat = float(lat)
-        st.session_state.lon = float(lon)
-        st.session_state.altitude_ft = float(altitude_alvo_ft)
         st.session_state.centro_mapa = [st.session_state.lat, st.session_state.lon]
 
         if st.session_state.declinacao is None:
@@ -728,13 +726,13 @@ with aba_planejamento:
             )
         else:
             declinacao = st.session_state.declinacao
-            st.metric("Declinação magnética", f"{declinacao:.2f}°")
+
+        st.metric("Declinação magnética", f"{declinacao:.2f}°")
 
         st.markdown("### Selecionar ponto no mapa")
 
         mapa_planejamento = criar_mapa_base(
-            [st.session_state.lat, st.session_state.lon],
-            zoom=13
+            [st.session_state.lat, st.session_state.lon], zoom=13
         )
 
         folium.Marker(
@@ -766,21 +764,21 @@ with aba_planejamento:
                 st.session_state.mapa_planejamento_rev += 1
                 st.rerun()
 
-        st.divider()
+    st.divider()
+    st.subheader("2. Parâmetros")
 
-        st.subheader("2. Parâmetros")
+    c4, c5, c6 = st.columns(3)
 
-        c4, c5, c6 = st.columns(3)
-
-        with c4:
+    with c4:
             altura_comandamento_ft = st.number_input(
                 "Altura de comandamento ft",
                 value=12000.0,
                 step=500.0,
                 key="altura_comandamento",
             )
+    st.session_state.altura_comandamento_ft = altura_comandamento_ft
 
-        with c5:
+    with c5:
             perda_comandamento_ft = st.number_input(
                 "Perda no comandamento ft",
                 value=1000.0,
@@ -788,7 +786,7 @@ with aba_planejamento:
                 key="perda_comandamento",
             )
 
-        with c6:
+    with c6:
             altura_saida_ft = st.number_input(
                 "Altura de saída ft",
                 value=12000.0,
@@ -797,27 +795,43 @@ with aba_planejamento:
                 key="altura_saida",
             )
 
-        topo_velame_msl = altitude_alvo_ft + max(altura_comandamento_ft - perda_comandamento_ft, 0)
-        topo_comandamento_msl = altitude_alvo_ft + altura_comandamento_ft
+    topo_velame_msl = altitude_alvo_ft + max(altura_comandamento_ft - perda_comandamento_ft, 0)
+    topo_comandamento_msl = altitude_alvo_ft + altura_comandamento_ft
 
-        st.info(
-            f"Velame aberto considerado do alvo até {topo_velame_msl:,.0f} ft MSL. "
-            f"Comandamento/transição até {topo_comandamento_msl:,.0f} ft MSL."
-        )
+        
+        # =====================================================
+        # PAINEL DINÂMICO DO PONTO DE SAÍDA (PS)
+        # =====================================================
+    st.markdown("#### 📍 Ponto de Saída (PS)")
+        
+        # O sistema checa se o cálculo já foi feito lá na aba 2
+    if "distancia_velame_aberto_nm" in st.session_state and "fs_velame_aberto_kft" in st.session_state:
+            
+            # Altitude do PS = Altitude do Alvo (MSL) + Altura de Saída (AGL)
+            altitude_ps_msl = altitude_alvo_ft + altura_saida_ft
+            
+            st.metric(
+                "Altitude do PS (MSL)", 
+                f"{altitude_ps_msl:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", ".")
+            )
+                
+    else:
+            st.caption("⏳ Calcule a Distância para Velame Aberto na próxima aba para liberar este painel.")
+    st.divider()
 
-        st.divider()
+    st.subheader("3. Windgram / Dados de Vento")
 
-        st.subheader("3. NOAA READY / Windgram")
+    st.info("💡 Aqui você deve copiar e Colar o Windgrama com as três colunas que aparecem no NOAA, do jeito que elas aparecem! É só copiar e colar aqui!")
 
-        st.link_button(
+    st.link_button(
             "Abrir NOAA READY",
             "https://www.ready.noaa.gov/READYcmet.php"
         )
 
-        st.write("Coordenadas para copiar no NOAA:")
-        st.code(f"{st.session_state.lat:.6f}, {st.session_state.lon:.6f}")
+    st.write("Coordenadas para copiar no NOAA:")
+    st.code(f"{st.session_state.lat:.6f}, {st.session_state.lon:.6f}")
 
-        with st.expander("Instruções rápidas"):
+    with st.expander("Instruções rápidas"):
             st.markdown(
                 """
                 No NOAA READY:
@@ -833,14 +847,14 @@ with aba_planejamento:
                 """
             )
 
-        texto_windgram = st.text_area(
+    texto_windgram = st.text_area(
             "Cole aqui o Windgram textual",
             height=260,
             placeholder="Ex:\nFHR: + 0.\n700.mb 290@030\n750.mb 289@029\n800.mb 286@026",
             key="windgram_texto",
         )
 
-        if st.button("Carregar Windgram e calcular", type="primary"):
+    if st.button("Carregar Windgram e calcular", type="primary"):
             registros, colunas = processar_windgram(texto_windgram)
 
             if not registros:
