@@ -257,6 +257,46 @@ def buscar_altitude(lat, lon):
         return m_para_ft(elev_m)
     except Exception:
         return None
+    
+def consultar_terreno_e_pressao(lat, lon):
+    altitude_ft = None
+    qfe_hpa = None
+
+    try:
+        url_elev = (
+            "https://api.open-meteo.com/v1/elevation"
+            f"?latitude={lat}&longitude={lon}"
+        )
+
+        resp_elev = requests.get(url_elev, timeout=10)
+        resp_elev.raise_for_status()
+        dados_elev = resp_elev.json()
+
+        if "elevation" in dados_elev and len(dados_elev["elevation"]) > 0:
+            altitude_m = float(dados_elev["elevation"][0])
+            altitude_ft = m_para_ft(altitude_m)
+
+    except Exception:
+        altitude_ft = None
+
+    try:
+        url_pressao = (
+            "https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            "&current=surface_pressure"
+        )
+
+        resp_pressao = requests.get(url_pressao, timeout=10)
+        resp_pressao.raise_for_status()
+        dados_pressao = resp_pressao.json()
+
+        if "current" in dados_pressao and "surface_pressure" in dados_pressao["current"]:
+            qfe_hpa = float(dados_pressao["current"]["surface_pressure"])
+
+    except Exception:
+        qfe_hpa = None
+
+    return altitude_ft, qfe_hpa
 
 
 def calcular_declinacao(lat, lon, altitude_ft):
@@ -418,7 +458,11 @@ def montar_dataframe_windgram(
 
         altura_sobre_alvo = alt - altitude_alvo_ft
 
-        if altitude_alvo_ft <= alt <= topo_velame_ft_msl:
+        limite_vento_solo_ft_msl = altitude_alvo_ft + 750
+
+        if altitude_alvo_ft <= alt <= limite_vento_solo_ft_msl:
+            fase = "Vento de solo (desprezado)"
+        elif limite_vento_solo_ft_msl < alt <= topo_velame_ft_msl:
             fase = "Velame aberto"
         elif topo_velame_ft_msl < alt <= topo_comandamento_ft_msl:
             fase = "Comandamento"
@@ -500,7 +544,9 @@ def calcular_media_camadas_mais_baixas(df, qtd_camadas):
 def estilo_fases(row):
     fase = row["Fase"]
 
-    if fase == "Velame aberto":
+    if fase == "Vento de solo (desprezado)":
+        cor = "background-color: #f4cccc"
+    elif fase == "Velame aberto":
         cor = "background-color: #a6ff4d"
     elif fase == "Comandamento":
         cor = "background-color: #ffd966"
@@ -514,7 +560,6 @@ def estilo_fases(row):
     estilo = f"{cor}; color: #000000; font-weight: 600"
 
     return [estilo for _ in row]
-
 
 # =====================================================
 # FÓRMULAS A E D
@@ -802,21 +847,7 @@ with aba_planejamento:
         # =====================================================
         # PAINEL DINÂMICO DO PONTO DE SAÍDA (PS)
         # =====================================================
-    st.markdown("#### 📍 Ponto de Saída (PS)")
-        
-        # O sistema checa se o cálculo já foi feito lá na aba 2
-    if "distancia_velame_aberto_nm" in st.session_state and "fs_velame_aberto_kft" in st.session_state:
-            
-            # Altitude do PS = Altitude do Alvo (MSL) + Altura de Saída (AGL)
-            altitude_ps_msl = altitude_alvo_ft + altura_saida_ft
-            
-            st.metric(
-                "Altitude do PS (MSL)", 
-                f"{altitude_ps_msl:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", ".")
-            )
-                
-    else:
-            st.caption("⏳ Calcule a Distância para Velame Aberto na próxima aba para liberar este painel.")
+    
     st.divider()
 
     st.subheader("3. Windgram / Dados de Vento")
@@ -824,122 +855,122 @@ with aba_planejamento:
     st.info("💡 Aqui você deve copiar e Colar o Windgrama com as três colunas que aparecem no NOAA, do jeito que elas aparecem! É só copiar e colar aqui!")
 
     st.link_button(
-            "Abrir NOAA READY",
-            "https://www.ready.noaa.gov/READYcmet.php"
-        )
+                "Abrir NOAA READY",
+                "https://www.ready.noaa.gov/READYcmet.php"
+            )
 
     st.write("Coordenadas para copiar no NOAA:")
     st.code(f"{st.session_state.lat:.6f}, {st.session_state.lon:.6f}")
 
     with st.expander("Instruções rápidas"):
-            st.markdown(
-                """
-                No NOAA READY:
+                st.markdown(
+                    """
+                    No NOAA READY:
 
-                1. Insira latitude e longitude.
-                2. Escolha a previsão mais recente.
-                3. Produto: **WINDGRAM**.
-                4. Escolha o horário Zulu do lançamento.
-                5. Duração: **3h**.
-                6. Saída: **Text only**.
-                7. Resolva o CAPTCHA no site.
-                8. Copie a tabela textual e cole abaixo.
-                """
-            )
+                    1. Insira latitude e longitude.
+                    2. Escolha a previsão mais recente.
+                    3. Produto: **WINDGRAM**.
+                    4. Escolha o horário Zulu do lançamento.
+                    5. Duração: **3h**.
+                    6. Saída: **Text only**.
+                    7. Resolva o CAPTCHA no site.
+                    8. Copie a tabela textual e cole abaixo.
+                    """
+                )
 
     texto_windgram = st.text_area(
-            "Cole aqui o Windgram textual",
-            height=260,
-            placeholder="Ex:\nFHR: + 0.\n700.mb 290@030\n750.mb 289@029\n800.mb 286@026",
-            key="windgram_texto",
-        )
+                "Cole aqui o Windgram textual",
+                height=260,
+                placeholder="Ex:\nFHR: + 0.\n700.mb 290@030\n750.mb 289@029\n800.mb 286@026",
+                key="windgram_texto",
+            )
 
     if st.button("Carregar Windgram e calcular", type="primary"):
-            registros, colunas = processar_windgram(texto_windgram)
+                registros, colunas = processar_windgram(texto_windgram)
 
-            if not registros:
-                st.error("Não consegui ler o Windgram. Cole linhas no formato: 700.mb 290@030")
-            else:
-                if not colunas:
-                    colunas = list(registros[0]["valores"].keys())
+                if not registros:
+                    st.error("Não consegui ler o Windgram. Cole linhas no formato: 700.mb 290@030")
+                else:
+                    if not colunas:
+                        colunas = list(registros[0]["valores"].keys())
 
-                coluna = colunas[0]
+                    coluna = colunas[0]
 
-                df = montar_dataframe_windgram(
-                    registros=registros,
-                    coluna=coluna,
-                    altitude_alvo_ft=altitude_alvo_ft,
-                    altura_comandamento_ft=altura_comandamento_ft,
-                    perda_comandamento_ft=perda_comandamento_ft,
-                    altura_saida_ft=altura_saida_ft,
-                )
+                    df = montar_dataframe_windgram(
+                        registros=registros,
+                        coluna=coluna,
+                        altitude_alvo_ft=altitude_alvo_ft,
+                        altura_comandamento_ft=altura_comandamento_ft,
+                        perda_comandamento_ft=perda_comandamento_ft,
+                        altura_saida_ft=altura_saida_ft,
+                    )
 
-                resumo_velame = resumo_por_fase(df, "Velame aberto")
-                resumo_queda = resumo_por_fase(df, "Queda livre")
+                    resumo_velame = resumo_por_fase(df, "Velame aberto")
+                    resumo_queda = resumo_por_fase(df, "Queda livre")
 
-                st.session_state.df_windgram = df
-                st.session_state.resumo_velame = resumo_velame
-                st.session_state.resumo_queda = resumo_queda
-                st.session_state.declinacao_usada = declinacao
+                    st.session_state.df_windgram = df
+                    st.session_state.resumo_velame = resumo_velame
+                    st.session_state.resumo_queda = resumo_queda
+                    st.session_state.declinacao_usada = declinacao
 
-                if resumo_velame:
-                    st.session_state.vento_medio_velame = resumo_velame["vento_medio"]
-                    st.session_state.direcao_media_velame = resumo_velame["direcao_media"]
+                    if resumo_velame:
+                        st.session_state.vento_medio_velame = resumo_velame["vento_medio"]
+                        st.session_state.direcao_media_velame = resumo_velame["direcao_media"]
 
-                st.success("Windgram processado com sucesso.")
+                    st.success("Windgram processado com sucesso.")
 
     with col_dir:
-        st.subheader("Resultado")
+            st.subheader("Resultado")
 
-        if "df_windgram" not in st.session_state:
-            st.info("Cole o Windgram e clique em calcular.")
-        else:
-            df = st.session_state.df_windgram
-            resumo_velame = st.session_state.resumo_velame
-            resumo_queda = st.session_state.resumo_queda
-            declinacao = st.session_state.declinacao_usada
-
-            if resumo_velame:
-                vento = resumo_velame["vento_medio"]
-                direcao_vento = resumo_velame["direcao_media"]
-                direcao_ponderada = resumo_velame["direcao_ponderada"]
-
-                azimute_referencia_verdadeiro = direcao_vento
-                azimute_referencia_magnetico = verdadeiro_para_magnetico(
-                    azimute_referencia_verdadeiro,
-                    declinacao
-                )
-
-                r1, r2 = st.columns(2)
-
-                with r1:
-                    st.metric("Média dos Ventos de Camada", f"{vento:.1f} kt")
-                    st.metric("Direção média dos ventos", f"{direcao_vento:.0f}°")
-
-                with r2:
-                    st.metric("Azimute de Navegação / Entrada de Cauda", f"{azimute_referencia_magnetico:.0f}°")
-                    st.metric("Entrada de Nariz", f"{contra_azimute(azimute_referencia_magnetico):.0f}°")
-
-                st.write(f"Referência verdadeira: **{azimute_referencia_verdadeiro:.0f}°**")
-                st.write(f"Declinação aplicada: **{declinacao:.2f}°**")
-                st.write(f"Direção ponderada do vento: **{direcao_ponderada:.0f}°**")
-                st.write(f"Camadas de velame usadas: **{resumo_velame['qtd']}**")
-
+            if "df_windgram" not in st.session_state:
+                st.info("Cole o Windgram e clique em calcular.")
             else:
-                st.warning("Nenhuma camada de velame aberto foi encontrada.")
+                df = st.session_state.df_windgram
+                resumo_velame = st.session_state.resumo_velame
+                resumo_queda = st.session_state.resumo_queda
+                declinacao = st.session_state.declinacao_usada
 
-            if resumo_queda:
-                with st.expander("Resumo queda livre"):
-                    st.write(f"Vento médio: **{resumo_queda['vento_medio']:.1f} kt**")
-                    st.write(f"Direção média: **{resumo_queda['direcao_media']:.0f}°**")
-                    st.write(f"Camadas usadas: **{resumo_queda['qtd']}**")
+                if resumo_velame:
+                    vento = resumo_velame["vento_medio"]
+                    direcao_vento = resumo_velame["direcao_media"]
+                    direcao_ponderada = resumo_velame["direcao_ponderada"]
 
-            with st.expander("Ver tabela colorida"):
-                st.dataframe(
-                    df.style.apply(estilo_fases, axis=1),
-                    use_container_width=True,
-                    height=500
-                )
+                    azimute_referencia_verdadeiro = direcao_vento
+                    azimute_referencia_magnetico = verdadeiro_para_magnetico(
+                        azimute_referencia_verdadeiro,
+                        declinacao
+                    )
+
+                    r1, r2 = st.columns(2)
+
+                    with r1:
+                        st.metric("Média dos Ventos de Camada", f"{vento:.1f} kt")
+                        st.metric("Direção média dos ventos", f"{direcao_vento:.0f}°")
+
+                    with r2:
+                        st.metric("Azimute de Navegação / Entrada de Cauda", f"{azimute_referencia_magnetico:.0f}°")
+                        st.metric("Entrada de Nariz", f"{contra_azimute(azimute_referencia_magnetico):.0f}°")
+
+                    st.write(f"Referência verdadeira: **{azimute_referencia_verdadeiro:.0f}°**")
+                    st.write(f"Declinação aplicada: **{declinacao:.2f}°**")
+                    st.write(f"Direção ponderada do vento: **{direcao_ponderada:.0f}°**")
+                    st.write(f"Camadas de velame usadas: **{resumo_velame['qtd']}**")
+
+                else:
+                    st.warning("Nenhuma camada de velame aberto foi encontrada.")
+
+                if resumo_queda:
+                    with st.expander("Resumo queda livre"):
+                        st.write(f"Vento médio: **{resumo_queda['vento_medio']:.1f} kt**")
+                        st.write(f"Direção média: **{resumo_queda['direcao_media']:.0f}°**")
+                        st.write(f"Camadas usadas: **{resumo_queda['qtd']}**")
+
+                with st.expander("Ver tabela colorida"):
+                    st.dataframe(
+                        df.style.apply(estilo_fases, axis=1),
+                        use_container_width=True,
+                        height=500
+                    )
 
 
 # =====================================================
@@ -1054,7 +1085,73 @@ with aba_calculos:
             st.error(str(e))
 
     st.divider()
+    st.markdown("#### 📍 Consulta ambiental do PS")
 
+if "ps_lat" not in st.session_state or "ps_lon" not in st.session_state:
+    st.warning(
+        "Coordenada do PS ainda não registrada. "
+        "Calcule/registre o PS antes de consultar altitude e DAA/QFE."
+    )
+
+else:
+    lat_padrao_consulta = float(st.session_state.ps_lat)
+    lon_padrao_consulta = float(st.session_state.ps_lon)
+
+    c_ps_lat, c_ps_lon = st.columns(2)
+
+    with c_ps_lat:
+        lat_consulta = st.number_input(
+            "Latitude do PS",
+            value=lat_padrao_consulta,
+            step=0.0001,
+            format="%.6f",
+            key=f"lat_consulta_ps_{round(lat_padrao_consulta, 6)}"
+        )
+
+    with c_ps_lon:
+        lon_consulta = st.number_input(
+            "Longitude do PS",
+            value=lon_padrao_consulta,
+            step=0.0001,
+            format="%.6f",
+            key=f"lon_consulta_ps_{round(lon_padrao_consulta, 6)}"
+        )
+
+    st.success("Coordenada do PS carregada automaticamente.")
+    st.caption(f"PS: {lat_consulta:.6f}, {lon_consulta:.6f}")
+
+    if st.button("🌎 Consultar altitude e DAA/QFE", key="btn_consultar_ambiente_ps"):
+        altitude_consulta_ft, qfe_consulta_hpa = consultar_terreno_e_pressao(
+            lat_consulta,
+            lon_consulta
+        )
+
+        st.session_state.altitude_consulta_ft = altitude_consulta_ft
+        st.session_state.qfe_consulta_hpa = qfe_consulta_hpa
+
+    c_ps1, c_ps2 = st.columns(2)
+
+    with c_ps1:
+        altitude_consulta_ft = st.session_state.get("altitude_consulta_ft")
+
+        if altitude_consulta_ft is not None:
+            st.metric(
+                "Altitude do terreno no PS",
+                f"{altitude_consulta_ft:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", ".")
+            )
+        else:
+            st.metric("Altitude do terreno no PS", "—")
+
+    with c_ps2:
+        qfe_consulta_hpa = st.session_state.get("qfe_consulta_hpa")
+
+        if qfe_consulta_hpa is not None:
+            st.metric("DAA / QFE no PS", f"{qfe_consulta_hpa:.1f} hPa")
+        else:
+            st.metric("DAA / QFE no PS", "—")
+
+    st.caption("Fonte de consulta: Open-Meteo Elevation API e Open-Meteo Forecast Surface Pressure.")
+    st.divider()    
     with st.expander("Salvar novo perfil"):
         with st.form("form_salvar_perfil_velame", clear_on_submit=True):
             novo_nome = st.text_input(
@@ -1362,7 +1459,9 @@ with aba_camadas:
             
             # Ponto final da reta (Abertura do Velame)
             lat_fim, lon_fim = calcular_coordenada_destino(lat_alvo, lon_alvo, dist_total_km, azimute_vento)
-            
+            st.session_state.ps_lat = lat_fim
+            st.session_state.ps_lon = lon_fim
+            st.session_state.ps_origem = "PS da Distância D"
             # Construindo o código KML
             kml_str = f"""<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
@@ -1506,70 +1605,235 @@ with aba_dkva:
         with r3:
             st.metric("Eixo de Navegação (Nariz)", f"{contra_azimute(direcao_vento):.0f}°")
 
-        # -----------------------------
-        # EXPORTAÇÃO KMZ DO DKVA
-        # -----------------------------
+# =====================================================
+        # EXPORTAÇÃO KMZ (DKVA TÁTICO)
+        # =====================================================
         st.divider()
-        st.markdown("### 🌍 Exportar Planejamento (Google Earth)")
-        
-        if st.button("Gerar Arquivo KMZ (DKVA)", type="primary", key="btn_kmz_dkva"):
-            # Coordenadas Iniciais e Finais
+        st.markdown("### 🌍 Exportar Planejamento DKVA (Google Earth)")
+
+        tipo_lanc_dkva = st.radio(
+            "Selecione o Tipo de Lançamento:",
+            ["Lançamento de Nariz", "Lançamento de Cauda", "Lançamento Boca do Cone"],
+            horizontal=True
+        )
+
+        offset_base = 0.0
+        dispersao_m = 0.0
+
+        if tipo_lanc_dkva in ["Lançamento de Cauda", "Lançamento Boca do Cone"]:
+            st.markdown(f"#### Parâmetros para {tipo_lanc_dkva}")
+            c_dk1, c_dk2, c_dk3 = st.columns(3)
+            with c_dk1:
+                num_blocos = st.number_input("Número de Blocos", min_value=1, value=1, step=1, key="nb_dkva")
+            with c_dk2:
+                int_blocos = st.number_input("Intervalo (s)", min_value=0.0, value=1.0, step=0.5, key="ib_dkva")
+            with c_dk3:
+                # Dicionário com [Velocidade (m/s), Offset Base (m)]
+                dic_aero_dkva = {
+                    "C 105 Amazonas": [70, 300],
+                    "KC 390": [70, 300],
+                    "Beech 99": [60, 150],
+                    "Caravan": [40, 150],
+                    "Gran Caravan": [40, 150],
+                    "Helicóptero": [40, 150]
+                }
+                aero_esc = st.selectbox("Aeronave", list(dic_aero_dkva.keys()), key="ae_dkva")
+                vel_aeronave = dic_aero_dkva[aero_esc][0]
+                offset_base = dic_aero_dkva[aero_esc][1]
+
+            dispersao_m = num_blocos * int_blocos * vel_aeronave
+
+            if tipo_lanc_dkva == "Lançamento de Cauda":
+                deslocamento_total = offset_base + dispersao_m
+                st.info(f"📍 O Ponto de Saída será estendido em **{deslocamento_total:.0f} metros** na linha de vento (Offset de segurança da aeronave: {offset_base}m + Dispersão: {dispersao_m:.0f}m).")
+            elif tipo_lanc_dkva == "Lançamento Boca do Cone":
+                st.info(f"📏 A reta perpendicular de dispersão terá **{dispersao_m:.0f} metros** de comprimento total.")
+
+        if st.button("🗺️ Gerar Arquivo KMZ do DKVA", type="primary"):
+            import math
+
             lat_alvo = st.session_state.lat
             lon_alvo = st.session_state.lon
             lat_pl, lon_pl = calcular_coordenada_destino(lat_alvo, lon_alvo, d_km, direcao_vento)
+            st.session_state.ps_lat = lat_pl
+            st.session_state.ps_lon = lon_pl
+            st.session_state.ps_origem = "PS DKVA"
+# =====================================================
+            # CÁLCULO DE ALTITUDE E DAA (QFE) DO PS
+            # =====================================================
+            st.markdown("#### 📍 Dados Atmosféricos do Ponto de Saída (PS)")
             
-            kml_dkva = f"""<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <name>Planejamento DKVA</name>
-    <Style id="linhaEixo">
-      <LineStyle><color>ff0000ff</color><width>3</width></LineStyle>
-    </Style>
-    <Style id="iconeAlvo">
-      <IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-stars.png</href></Icon></IconStyle>
-    </Style>
-    <Style id="iconePonto">
-      <IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href></Icon></IconStyle>
-    </Style>
+            with st.spinner("A consultar a base de dados meteorológica (QFE e Altitude)..."):
+                alt_ps_ft = 0.0
+                qfe_hpa = 0.0
+                
+                try:
+                    # 1. Busca a Elevação Exata pura (em metros) e converte para pés
+                    url_elev = f"https://api.open-meteo.com/v1/elevation?latitude={lat_pl}&longitude={lon_pl}"
+                    resp_elev = requests.get(url_elev, timeout=5).json()
+                    
+                    if "elevation" in resp_elev and len(resp_elev["elevation"]) > 0:
+                        alt_ps_m = float(resp_elev["elevation"][0])
+                        alt_ps_ft = alt_ps_m * 3.28084
+                    
+                    # 2. Busca a Pressão Superficial (QFE) exata do Ponto de Saída
+                    url_clima = f"https://api.open-meteo.com/v1/forecast?latitude={lat_pl}&longitude={lon_pl}&current=surface_pressure"
+                    resp_clima = requests.get(url_clima, timeout=5).json()
+                    
+                    if "current" in resp_clima and "surface_pressure" in resp_clima["current"]:
+                        qfe_hpa = float(resp_clima["current"]["surface_pressure"])
+                        
+                except Exception:
+                    pass
 
-    <Placemark>
-      <name>Alvo</name>
-      <styleUrl>#iconeAlvo</styleUrl>
-      <Point><coordinates>{lon_alvo},{lat_alvo},0</coordinates></Point>
-    </Placemark>
+            c_ps1, c_ps2 = st.columns(2)
+            
+            with c_ps1:
+                # Se falhar, deixa a caixa vazia para poder digitar manualmente
+                val_alt = f"{alt_ps_ft:.0f} ft" if alt_ps_ft > 0 else ""
+                st.text_input("Altitude do PS (MSL):", value=val_alt, key="ps_alt_input")
+                
+            with c_ps2:
+                # Campo textual escrito DAA exibindo a resposta do QFE
+                val_qfe = f"{qfe_hpa:.1f} hPa" if qfe_hpa > 0 else ""
+                st.text_input("DAA :", value=val_qfe, key="ps_daa_input")
+                
+            st.divider()
+            # ---> METROS CALCULADOS AQUI E DENTRO DO BOTÃO <---
+            d_metros = d_km * 1000.0
 
-    <Placemark>
-      <name>Eixo de Navegação ({d_metros:.0f} m)</name>
-      <styleUrl>#linhaEixo</styleUrl>
-      <LineString>
-        <extrude>1</extrude><tessellate>1</tessellate>
-        <coordinates>
-          {lon_alvo},{lat_alvo},0
-          {lon_pl},{lat_pl},0
-        </coordinates>
-      </LineString>
-    </Placemark>
+            # Funções matemáticas blindadas para traçar os pontos no mapa
+            def calc_rumo(lat1, lon1, lat2, lon2):
+                l1, ln1, l2, ln2 = map(math.radians, [lat1, lon1, lat2, lon2])
+                d_lon = ln2 - ln1
+                x = math.sin(d_lon) * math.cos(l2)
+                y = math.cos(l1) * math.sin(l2) - (math.sin(l1) * math.cos(l2) * math.cos(d_lon))
+                return (math.degrees(math.atan2(x, y)) + 360) % 360
 
-    <Placemark>
-      <name>Ponto de Saída</name>
-      <description>Altura: {A_kft:.1f} kft | Vento: {v_usado:.1f} kt</description>
-      <styleUrl>#iconePonto</styleUrl>
-      <Point><coordinates>{lon_pl},{lat_pl},0</coordinates></Point>
-    </Placemark>
-  </Document>
-</kml>"""
+            def mover_ponto(lat, lon, dist_km, azimute_graus):
+                R = 6371.0
+                l_rad, ln_rad, az_rad = map(math.radians, [lat, lon, azimute_graus])
+                lat_n = math.asin(math.sin(l_rad) * math.cos(dist_km/R) + math.cos(l_rad) * math.sin(dist_km/R) * math.cos(az_rad))
+                lon_n = ln_rad + math.atan2(math.sin(az_rad) * math.sin(dist_km/R) * math.cos(l_rad), math.cos(dist_km/R) - math.sin(l_rad) * math.sin(lat_n))
+                return math.degrees(lat_n), math.degrees(lon_n)
 
-            # Empacota no formato KMZ
+            # O vento sopra do Alvo para o Ponto D
+            az_vento = calc_rumo(lat_alvo, lon_alvo, lat_pl, lon_pl)
+            dec_mag = st.session_state.get("declinacao", 0.0)
+            
+            # Estilos visuais do Google Earth (Cores KML: Alpha-Azul-Verde-Vermelho)
+            estilos_kml = """
+            <Style id="linhaVermelha"><LineStyle><color>ff0000ff</color><width>4</width></LineStyle></Style>
+            <Style id="linhaAzul"><LineStyle><color>ffff0000</color><width>4</width></LineStyle></Style>
+            <Style id="linhaAmarela"><LineStyle><color>ff00ffff</color><width>4</width></LineStyle></Style>
+            <Style id="iconeAlvo"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-stars.png</href></Icon></IconStyle></Style>
+            <Style id="iconePonto"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href></Icon></IconStyle></Style>
+            """
+            
+            # Elementos Fixos: Alvo e a Reta D (Sempre Vermelha)
+            kml_elementos = f"""
+            <Placemark>
+              <name>Alvo</name>
+              <styleUrl>#iconeAlvo</styleUrl>
+              <Point><coordinates>{lon_alvo},{lat_alvo},0</coordinates></Point>
+            </Placemark>
+
+            <Placemark>
+              <name>Distância D ({d_metros:.0f} m)</name>
+              <styleUrl>#linhaVermelha</styleUrl>
+              <LineString><extrude>1</extrude><tessellate>1</tessellate>
+                <coordinates>{lon_alvo},{lat_alvo},0 {lon_pl},{lat_pl},0</coordinates>
+              </LineString>
+            </Placemark>
+            """
+
+            if tipo_lanc_dkva == "Lançamento de Nariz":
+                kml_elementos += f"""
+                <Placemark>
+                  <name>PS (Nariz)</name>
+                  <description>Altura: {A_kft:.1f} kft | Vento: {v_usado:.1f} kt</description>
+                  <styleUrl>#iconePonto</styleUrl>
+                  <Point><coordinates>{lon_pl},{lat_pl},0</coordinates></Point>
+                </Placemark>
+                """
+
+            elif tipo_lanc_dkva == "Lançamento de Cauda":
+                # Primeiro calculamos onde termina o Arrasto (Azul)
+                lat_arrasto, lon_arrasto = mover_ponto(lat_pl, lon_pl, offset_base / 1000.0, az_vento)
+                
+                # Depois, a partir do Arrasto, calculamos onde termina a Dispersão (Amarela)
+                lat_ps_cauda, lon_ps_cauda = mover_ponto(lat_arrasto, lon_arrasto, dispersao_m / 1000.0, az_vento)
+                
+                kml_elementos += f"""
+                <Placemark>
+                  <name>Arrasto Aeronave ({offset_base:.0f} m)</name>
+                  <styleUrl>#linhaAzul</styleUrl>
+                  <LineString><extrude>1</extrude><tessellate>1</tessellate>
+                    <coordinates>{lon_pl},{lat_pl},0 {lon_arrasto},{lat_arrasto},0</coordinates>
+                  </LineString>
+                </Placemark>
+                <Placemark>
+                  <name>Dispersão ({dispersao_m:.0f} m)</name>
+                  <styleUrl>#linhaAmarela</styleUrl>
+                  <LineString><extrude>1</extrude><tessellate>1</tessellate>
+                    <coordinates>{lon_arrasto},{lat_arrasto},0 {lon_ps_cauda},{lat_ps_cauda},0</coordinates>
+                  </LineString>
+                </Placemark>
+                <Placemark>
+                  <name>PS Final (Cauda)</name>
+                  <description>Offset Aeronave: {offset_base}m | Dispersão: {dispersao_m:.0f}m</description>
+                  <styleUrl>#iconePonto</styleUrl>
+                  <Point><coordinates>{lon_ps_cauda},{lat_ps_cauda},0</coordinates></Point>
+                </Placemark>
+                """
+
+            elif tipo_lanc_dkva == "Lançamento Boca do Cone":
+                # Traça 90º para a direita e esquerda em relação ao eixo do vento a partir da Distância D
+                az_direita = (az_vento + 90) % 360
+                az_esquerda = (az_vento - 90) % 360
+                
+                # Desconta a declinação magnética para exibir os rumos puros
+                az_mag_dir = (az_direita - dec_mag) % 360
+                az_mag_esq = (az_esquerda - dec_mag) % 360
+                
+                meia_disp_km = (dispersao_m / 2.0) / 1000.0
+                
+                # Desenha os dois pontos nas extremidades da reta perpendicular
+                lat_dir, lon_dir = mover_ponto(lat_pl, lon_pl, meia_disp_km, az_direita)
+                lat_esq, lon_esq = mover_ponto(lat_pl, lon_pl, meia_disp_km, az_esquerda)
+                
+                kml_elementos += f"""
+                <Placemark>
+                  <name>Dispersão Perpendicular (Boca do Cone - {dispersao_m:.0f}m)</name>
+                  <styleUrl>#linhaAmarela</styleUrl>
+                  <LineString><extrude>1</extrude><tessellate>1</tessellate>
+                    <coordinates>{lon_esq},{lat_esq},0 {lon_dir},{lat_dir},0</coordinates>
+                  </LineString>
+                </Placemark>
+                <Placemark>
+                  <name>PS Direita (Rumo Mag: {az_mag_esq:.0f}°)</name>
+                  <styleUrl>#iconePonto</styleUrl>
+                  <Point><coordinates>{lon_dir},{lat_dir},0</coordinates></Point>
+                </Placemark>
+                <Placemark>
+                  <name>PS Esquerda (Rumo Mag: {az_mag_dir:.0f}°)</name>
+                  <styleUrl>#iconePonto</styleUrl>
+                  <Point><coordinates>{lon_esq},{lat_esq},0</coordinates></Point>
+                </Placemark>
+                """
+
+            # Monta e comprime o KML
+            kml_str = f'<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n  <Document>\n    <name>Planejamento DKVA Tático</name>\n    {estilos_kml}\n    {kml_elementos}\n  </Document>\n</kml>'
+
             zip_buffer_dkva = io.BytesIO()
             with zipfile.ZipFile(zip_buffer_dkva, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                zip_file.writestr("planejamento_dkva.kml", kml_dkva.encode("utf-8"))
+                zip_file.writestr("planejamento_dkva_tatico.kml", kml_str.encode("utf-8"))
+                
+            kmz_bytes = zip_buffer_dkva.getvalue()
             
-            kmz_bytes_dkva = zip_buffer_dkva.getvalue()
-            
-            st.success("KMZ do DKVA gerado com sucesso!")
             st.download_button(
-                label="🗺️ Baixar KMZ do Salto (DKVA)",
-                data=kmz_bytes_dkva,
-                file_name="Planejamento_DKVA.kmz",
+                label="🗺️ Baixar KMZ Tático (DKVA)",
+                data=kmz_bytes,
+                file_name="DKVA_Tatico.kmz",
                 mime="application/vnd.google-earth.kmz"
             )
