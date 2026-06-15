@@ -980,13 +980,17 @@ with aba_calculos:
     c1, c2 = st.columns(2)
 
     with c1:
-        A_kft = st.number_input(
-            "A — Altura de abertura do paraquedas (kft)",
-            value=12.0,
-            step=0.1,
-            help="Exemplo: 12.0 significa 12.000 ft."
-        )
+        altura_comandamento_kft_auto = float(
+        st.session_state.get("altura_comandamento_ft", 12000.0)
+    ) / 1000.0
 
+        A_kft = st.number_input(
+        "A — Altura de abertura do paraquedas (kft)",
+        value=altura_comandamento_kft_auto,
+        step=0.1,
+        key=f"calc_d_a_auto_{int(st.session_state.get('altura_comandamento_ft', 12000.0))}",
+        help="Valor preenchido automaticamente a partir da Altura de comandamento informada na aba Planejamento."
+    )
         FS_kft = st.number_input(
             "FS — Fator de Segurança (kft)",
             value=float(perfil_escolhido.get("fs_kft", 2.0)),
