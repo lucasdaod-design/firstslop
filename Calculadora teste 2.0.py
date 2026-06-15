@@ -10,6 +10,7 @@ import math
 import re
 import json
 import os
+import unicodedata
 from urllib.parse import quote
 
 
@@ -187,49 +188,139 @@ def media_circular_ponderada(direcoes, velocidades):
     return normalizar_azimute(media)
 
 
-def buscar_localidade(texto):
-    texto = texto.strip()
+def normalizar_texto_busca(texto):
+    texto = texto.strip().lower()
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    texto = " ".join(texto.split())
+    return texto
 
-    if not texto:
+
+def buscar_localidade(texto):
+    texto_original = texto.strip()
+
+    if not texto_original:
         return None
 
+    texto_norm = normalizar_texto_busca(texto_original)
+
+    apelidos = {
+        "campo grande": "Campo Grande, Mato Grosso do Sul, Brasil",
+        "campo grande ms": "Campo Grande, Mato Grosso do Sul, Brasil",
+        "campo grande, ms": "Campo Grande, Mato Grosso do Sul, Brasil",
+        "goiania": "Goiânia, Goiás, Brasil",
+        "goiânia": "Goiânia, Goiás, Brasil",
+        "goiania go": "Goiânia, Goiás, Brasil",
+        "goiânia go": "Goiânia, Goiás, Brasil",
+        "anapolis": "Anápolis, Goiás, Brasil",
+        "anápolis": "Anápolis, Goiás, Brasil",
+        "anapolis go": "Anápolis, Goiás, Brasil",
+        "anápolis go": "Anápolis, Goiás, Brasil",
+        "rio de janeiro": "Rio de Janeiro, Rio de Janeiro, Brasil",
+        "sao paulo": "São Paulo, São Paulo, Brasil",
+        "são paulo": "São Paulo, São Paulo, Brasil",
+        "brasilia": "Brasília, Distrito Federal, Brasil",
+        "brasília": "Brasília, Distrito Federal, Brasil",
+    }
+
+    consulta_principal = apelidos.get(texto_norm, texto_original)
+
     tentativas = [
-        texto,
-        f"{texto}, Brasil",
+        consulta_principal,
+        f"{texto_original}, Brasil",
+        f"Município de {texto_original}, Brasil",
     ]
 
-    if texto.lower() in ["campo grande", "campo grande ms"]:
-        tentativas.insert(0, "Campo Grande, Mato Grosso do Sul, Brasil")
+    # Remove duplicados mantendo a ordem
+    tentativas_unicas = []
+    for item in tentativas:
+        if item not in tentativas_unicas:
+            tentativas_unicas.append(item)
 
-    if texto.lower() in ["goiania", "goiânia"]:
-        tentativas.insert(0, "Goiânia, Goiás, Brasil")
+    headers = {
+        "User-Agent": "CalculadoraPQD/1.0",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+    }
 
-    headers = {"User-Agent": "CalculadoraPQD/1.0"}
-
-    for consulta in tentativas:
+    # =====================================================
+    # 1ª tentativa: Nominatim / OpenStreetMap
+    # =====================================================
+    for consulta in tentativas_unicas:
         try:
             url = "https://nominatim.openstreetmap.org/search"
+
             params = {
                 "q": consulta,
                 "format": "json",
-                "limit": 1,
+                "limit": 5,
                 "countrycodes": "br",
                 "addressdetails": 1,
             }
 
-            r = requests.get(url, params=params, headers=headers, timeout=10)
+            r = requests.get(url, params=params, headers=headers, timeout=15)
             r.raise_for_status()
+
             dados = r.json()
 
             if dados:
+                escolhido = dados[0]
+
                 return {
-                    "nome": dados[0].get("display_name", ""),
-                    "lat": float(dados[0]["lat"]),
-                    "lon": float(dados[0]["lon"]),
+                    "nome": escolhido.get("display_name", consulta),
+                    "lat": float(escolhido["lat"]),
+                    "lon": float(escolhido["lon"]),
+                    "fonte": "Nominatim / OpenStreetMap",
                 }
 
         except Exception:
             continue
+
+    # =====================================================
+    # 2ª tentativa: Open-Meteo Geocoding
+    # =====================================================
+    try:
+        nome_para_busca = consulta_principal.split(",")[0].strip()
+
+        url = "https://geocoding-api.open-meteo.com/v1/search"
+
+        params = {
+            "name": nome_para_busca,
+            "count": 10,
+            "language": "pt",
+            "format": "json",
+        }
+
+        r = requests.get(url, params=params, timeout=15)
+        r.raise_for_status()
+
+        dados = r.json()
+        resultados = dados.get("results", [])
+
+        resultados_br = [
+            item for item in resultados
+            if item.get("country_code") == "BR"
+        ]
+
+        if resultados_br:
+            escolhido = resultados_br[0]
+
+            nome = escolhido.get("name", nome_para_busca)
+            estado = escolhido.get("admin1", "")
+            pais = escolhido.get("country", "Brasil")
+
+            nome_completo = ", ".join(
+                parte for parte in [nome, estado, pais] if parte
+            )
+
+            return {
+                "nome": nome_completo,
+                "lat": float(escolhido["latitude"]),
+                "lon": float(escolhido["longitude"]),
+                "fonte": "Open-Meteo Geocoding",
+            }
+
+    except Exception:
+        pass
 
     return None
 def calcular_coordenada_destino(lat, lon, distancia_km, azimute_graus):
