@@ -2420,7 +2420,12 @@ with aba_folder:
             step=5.0,
             key="folder_velocidade_anv"
         )
+        distancia_teorica_1_fora_m = velocidade_anv * 60
 
+        st.caption(
+            f"Distância teórica 1' fora: "
+            f"{distancia_teorica_1_fora_m:,.0f} m".replace(",", ".")
+        )
         tipo_lancamento_folder = st.selectbox(
             "Tipo de lançamento para o folder",
             ["Lançamento de Nariz", "Lançamento de Cauda"],
@@ -2445,19 +2450,25 @@ with aba_folder:
 
         with ref2:
             st.markdown("#### 1' FORA")
+
+            st.info(
+                f"Distância teórica: "
+                f"{distancia_teorica_1_fora_m:,.0f} m".replace(",", ".")
+            )
+
             lat_1_fora = st.text_input(
                 "Latitude 1' fora",
                 value="",
                 placeholder="Ex: 20° 33.998'S",
                 key="folder_lat_1_fora"
             )
+
             lon_1_fora = st.text_input(
                 "Longitude 1' fora",
                 value="",
                 placeholder="Ex: 55° 1.541'O",
                 key="folder_lon_1_fora"
             )
-
         with ref3:
             st.markdown("#### PONTO DE SAÍDA - PS")
 
@@ -2533,6 +2544,7 @@ with aba_folder:
             "eixo_navegacao": f"{eixo_navegacao:.0f}°",
             "altura_comandamento_ft": fmt_ft(altura_comandamento_ft),
             "velocidade_anv": f"{velocidade_anv:.0f} m/s",
+            "distancia_1_fora": f"{distancia_teorica_1_fora_m:,.0f} m".replace(",", "."),
             "altitude_zl_ft": fmt_ft(altitude_zl_ft),
             "altitude_aerodromo_ft": fmt_ft(altitude_aerodromo_ft),
             "altitude_ps_ft": fmt_ft(altitude_ps_ft),
@@ -2560,7 +2572,7 @@ with aba_folder:
             st.write(f"**Eixo de navegação:** {dados_folder['eixo_navegacao']}")
             st.write(f"**Alt comandamento:** {dados_folder['altura_comandamento_ft']}")
             st.write(f"**Velocidade da Anv:** {dados_folder['velocidade_anv']}")
-
+            st.write(f"**Distância teórica 1' fora:** {dados_folder['distancia_1_fora']}")
         with c2:
             st.write(f"**Altitude da ZL:** {dados_folder['altitude_zl_ft']}")
             st.write(f"**Altitude Adrm:** {dados_folder['altitude_aerodromo_ft']}")
