@@ -356,7 +356,146 @@ def calcular_coordenada_destino(lat, lon, distancia_km, azimute_graus):
                              math.cos(distancia_km / R) - math.sin(lat1) * math.sin(lat2))
     
     return math.degrees(lat2), math.degrees(lon2)
+def diferenca_angular(a, b):
+    """
+    Diferença angular mínima entre dois azimutes.
+    Ex.: 350 e 10 = 20 graus.
+    """
+    return abs((a - b + 180) % 360 - 180)
 
+
+def detectar_dog_leg(df_windgram, limite_graus=90):
+    """
+    Procura uma quebra >= limite_graus dentro das camadas de Velame aberto.
+    Retorna os dois blocos (superior e inferior) se encontrar.
+    """
+    if df_windgram is None or df_windgram.empty:
+        return None
+
+    base = df_windgram[df_windgram["Fase"] == "Velame aberto"].copy()
+
+    if len(base) < 2:
+        return None
+
+    # Ordem do salto: de cima para baixo
+    base = base.sort_values("Altitude NOAA ft", ascending=False).reset_index(drop=True)
+
+    for i in range(len(base) - 1):
+        dir_atual = float(base.loc[i, "Direção °"])
+        dir_prox = float(base.loc[i + 1, "Direção °"])
+
+        diff = diferenca_angular(dir_atual, dir_prox)
+
+        if diff >= limite_graus:
+            bloco_superior = base.iloc[:i + 1].copy()
+            bloco_inferior = base.iloc[i + 1:].copy()
+
+            dir_superior = media_circular(
+                bloco_superior["Direção °"].astype(float).tolist()
+            )
+            dir_inferior = media_circular(
+                bloco_inferior["Direção °"].astype(float).tolist()
+            )
+
+            return {
+                "houve_dog_leg": True,
+                "indice_quebra": i,
+                "diferenca_graus": diff,
+                "qtd_total": len(base),
+                "qtd_superior": len(bloco_superior),
+                "qtd_inferior": len(bloco_inferior),
+                "dir_superior": dir_superior,
+                "dir_inferior": dir_inferior,
+                "bloco_superior": bloco_superior,
+                "bloco_inferior": bloco_inferior,
+            }
+
+    return None
+
+
+def resolver_geometria_dog_leg(
+    lat_alvo,
+    lon_alvo,
+    dist_total_km,
+    azimute_vermelho,
+    azimute_inferior,
+    azimute_superior,
+    qtd_inferior,
+    qtd_superior,
+):
+    """
+    Resolve o ponto de quebra do Dog Leg para que:
+    - a soma vetorial dos 2 trechos bata com a reta vermelha;
+    - o KMZ possa mostrar as 2 retas azuis.
+    """
+
+    def vetor_unitario(azimute):
+        rad = math.radians(azimute)
+        # eixo x = leste ; eixo y = norte
+        return math.sin(rad), math.cos(rad)
+
+    ux_inf, uy_inf = vetor_unitario(azimute_inferior)
+    ux_sup, uy_sup = vetor_unitario(azimute_superior)
+
+    vx, vy = vetor_unitario(azimute_vermelho)
+    vx *= dist_total_km
+    vy *= dist_total_km
+
+    det = (ux_inf * uy_sup) - (uy_inf * ux_sup)
+
+    # fallback por proporção de camadas
+    def fallback():
+        total = qtd_inferior + qtd_superior
+        if total <= 0:
+            total = 1
+
+        dist_inf = dist_total_km * (qtd_inferior / total)
+        dist_sup = dist_total_km * (qtd_superior / total)
+
+        lat_quebra, lon_quebra = calcular_coordenada_destino(
+            lat_alvo, lon_alvo, dist_inf, azimute_inferior
+        )
+
+        lat_ps_calc, lon_ps_calc = calcular_coordenada_destino(
+            lat_quebra, lon_quebra, dist_sup, azimute_superior
+        )
+
+        return {
+            "dist_inferior_km": dist_inf,
+            "dist_superior_km": dist_sup,
+            "lat_quebra": lat_quebra,
+            "lon_quebra": lon_quebra,
+            "lat_ps_calc": lat_ps_calc,
+            "lon_ps_calc": lon_ps_calc,
+            "metodo": "proporcional",
+        }
+
+    if abs(det) < 1e-9:
+        return fallback()
+
+    dist_inf = (vx * uy_sup - vy * ux_sup) / det
+    dist_sup = (ux_inf * vy - uy_inf * vx) / det
+
+    if dist_inf <= 0 or dist_sup <= 0:
+        return fallback()
+
+    lat_quebra, lon_quebra = calcular_coordenada_destino(
+        lat_alvo, lon_alvo, dist_inf, azimute_inferior
+    )
+
+    lat_ps_calc, lon_ps_calc = calcular_coordenada_destino(
+        lat_quebra, lon_quebra, dist_sup, azimute_superior
+    )
+
+    return {
+        "dist_inferior_km": dist_inf,
+        "dist_superior_km": dist_sup,
+        "lat_quebra": lat_quebra,
+        "lon_quebra": lon_quebra,
+        "lat_ps_calc": lat_ps_calc,
+        "lon_ps_calc": lon_ps_calc,
+        "metodo": "vetorial",
+    }
 
 def buscar_altitude(lat, lon):
     try:
@@ -1983,20 +2122,43 @@ with aba_camadas:
         if st.button("Gerar Arquivo KMZ", type="primary", key="btn_kmz_geral"):
             import math
             
+                        # Dados base
             lat_alvo = st.session_state.lat
             lon_alvo = st.session_state.lon
             dist_total_km = nm_para_km(st.session_state.distancia_velame_aberto_nm)
-            
+
+            # Direção verdadeira/geográfica para Google Earth / KMZ
+            # Não aplica declinação magnética.
             azimute_vento = float(
-                st.session_state.get(
+            st.session_state.get(
         "direcao_vento_verdadeira_kmz",
-                    st.session_state.resumo_velame.get(
+        st.session_state.resumo_velame.get(
             "direcao_media_aritmetica",
-                        st.session_state.resumo_velame.get("direcao_media", 0.0)
+            st.session_state.resumo_velame.get("direcao_media", 0.0)
         )
     )
 )
-            
+
+            # Ponto final da reta vermelha (PS)
+            lat_fim, lon_fim = calcular_coordenada_destino(
+                lat_alvo, lon_alvo, dist_total_km, azimute_vento
+            )
+
+            # Detecta Dog Leg
+            dog_leg = detectar_dog_leg(st.session_state.get("df_windgram"), limite_graus=90)
+
+            dog_leg_geo = None
+            if dog_leg:
+                dog_leg_geo = resolver_geometria_dog_leg(
+                    lat_alvo=lat_alvo,
+                    lon_alvo=lon_alvo,
+                    dist_total_km=dist_total_km,
+                    azimute_vermelho=azimute_vento,
+                    azimute_inferior=dog_leg["dir_inferior"],
+                    azimute_superior=dog_leg["dir_superior"],
+                    qtd_inferior=dog_leg["qtd_inferior"],
+                    qtd_superior=dog_leg["qtd_superior"],
+                )
             # Ponto final da reta vermelha (Distância D original)
             lat_d, lon_d = calcular_coordenada_destino(lat_alvo, lon_alvo, dist_total_km, azimute_vento)
             
@@ -2045,7 +2207,15 @@ with aba_camadas:
                 st.session_state.ps_lat = lat_ps_final
                 st.session_state.ps_lon = lon_ps_final
                 st.session_state.ps_origem = f"PS Final - {tipo_lancamento}"
-                kml_str += f"""
+                if dog_leg:
+                 st.info(
+        f"Dog Leg detectado: quebra de {dog_leg['diferenca_graus']:.0f}°. "
+        f"KMZ será exportado com 1 reta vermelha + 2 retas azuis."
+    )
+            kml_str += f"""
+            
+                
+                
     <Placemark>
       <name>Cauda / Arrasto ({adicional_cauda_m:.0f} m)</name>
       <styleUrl>#linhaAmarela</styleUrl>
@@ -2067,6 +2237,55 @@ with aba_camadas:
       <styleUrl>#iconePonto</styleUrl>
       <Point>
         <coordinates>{lon_ps_final},{lat_ps_final},0</coordinates>
+      </Point>
+    </Placemark>
+"""
+                        # Se houver Dog Leg, desenha as 2 retas azuis
+            if dog_leg and dog_leg_geo:
+                lat_quebra = dog_leg_geo["lat_quebra"]
+                lon_quebra = dog_leg_geo["lon_quebra"]
+
+                dist_inf = dog_leg_geo["dist_inferior_km"]
+                dist_sup = dog_leg_geo["dist_superior_km"]
+
+                dir_inf = dog_leg["dir_inferior"]
+                dir_sup = dog_leg["dir_superior"]
+
+                kml_str += f"""
+    <Placemark>
+      <name>Dog Leg - Trecho Inferior ({dist_inf:.2f} km)</name>
+      <description>Direção média do bloco inferior: {dir_inf:.0f}°</description>
+      <styleUrl>#linhaDogLeg</styleUrl>
+      <LineString>
+        <extrude>1</extrude>
+        <tessellate>1</tessellate>
+        <coordinates>
+          {lon_alvo},{lat_alvo},0
+          {lon_quebra},{lat_quebra},0
+        </coordinates>
+      </LineString>
+    </Placemark>
+
+    <Placemark>
+      <name>Dog Leg - Trecho Superior ({dist_sup:.2f} km)</name>
+      <description>Direção média do bloco superior: {dir_sup:.0f}°</description>
+      <styleUrl>#linhaDogLeg</styleUrl>
+      <LineString>
+        <extrude>1</extrude>
+        <tessellate>1</tessellate>
+        <coordinates>
+          {lon_quebra},{lat_quebra},0
+          {lon_fim},{lat_fim},0
+        </coordinates>
+      </LineString>
+    </Placemark>
+
+    <Placemark>
+      <name>Ponto de Quebra do Dog Leg</name>
+      <description>Transição entre os blocos de vento</description>
+      <styleUrl>#iconePonto</styleUrl>
+      <Point>
+        <coordinates>{lon_quebra},{lat_quebra},0</coordinates>
       </Point>
     </Placemark>
 """
@@ -2288,6 +2507,28 @@ with aba_dkva:
             <Style id="linhaAmarela"><LineStyle><color>ff00ffff</color><width>4</width></LineStyle></Style>
             <Style id="iconeAlvo"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-stars.png</href></Icon></IconStyle></Style>
             <Style id="iconePonto"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href></Icon></IconStyle></Style>
+            <Style id="linhaEixo">
+  <LineStyle>
+    <color>ff0000ff</color><width>3</width>
+  </LineStyle>
+</Style>
+
+<Style id="linhaDogLeg">
+  <LineStyle>
+    <color>ffff0000</color><width>3</width>
+  </LineStyle>
+</Style>
+
+<Style id="iconeAlvo">
+  <IconStyle>
+    <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-stars.png</href></Icon>
+  </IconStyle>
+</Style>
+<Style id="iconePonto">
+  <IconStyle>
+    <Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href></Icon>
+  </IconStyle>
+</Style>
             """
             
             # Elementos Fixos: Alvo e a Reta D (Sempre Vermelha)
