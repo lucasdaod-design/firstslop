@@ -12,7 +12,16 @@ import json
 import os
 import unicodedata
 from urllib.parse import quote
-
+try:
+    from docx import Document
+    from docx.shared import Pt
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    DOCX_OK = True
+except Exception:
+    DOCX_OK = False
 
 try:
     from geomag.geomag import GeoMag
@@ -117,6 +126,17 @@ if "last_lon_calc" not in st.session_state:
     st.session_state.last_lon_calc = None
 if "windgram_texto" not in st.session_state:
     st.session_state.windgram_texto = ""
+if "mapa_aerodromo_rev" not in st.session_state:
+    st.session_state.mapa_aerodromo_rev = 0
+
+if "ultimo_clique_aerodromo" not in st.session_state:
+    st.session_state.ultimo_clique_aerodromo = None
+
+if "lat_aerodromo_partida" not in st.session_state:
+    st.session_state.lat_aerodromo_partida = st.session_state.lat
+
+if "lon_aerodromo_partida" not in st.session_state:
+    st.session_state.lon_aerodromo_partida = st.session_state.lon
 
 # =====================================================
 # FUNÇÕES GERAIS
@@ -593,12 +613,30 @@ def resumo_por_fase(df, fase):
     direcoes = base["Direção °"].astype(float).tolist()
     velocidades = base["Velocidade kt"].astype(float).tolist()
 
+    direcao_aritmetica = sum(direcoes) / len(direcoes)
+    direcao_circular = media_circular(direcoes)
+    direcao_ponderada = media_circular_ponderada(direcoes, velocidades)
+
     return {
         "qtd": len(base),
+
+        # Velocidade média dos ventos: média aritmética das velocidades
         "vento_medio": sum(velocidades) / len(velocidades),
-        "direcao_media": media_circular(direcoes),
-        "direcao_ponderada": media_circular_ponderada(direcoes, velocidades),
+
+        # Direção média simples: média aritmética dos azimutes
+        "direcao_media_aritmetica": direcao_aritmetica,
+
+        # Direção correta para azimute/referência: média circular
+        "direcao_media_circular": direcao_circular,
+
+        # Mantém compatibilidade com partes antigas do app
+        "direcao_media": direcao_circular,
+
+        # Média ponderada pela velocidade
+        "direcao_ponderada": direcao_ponderada,
     }
+
+
 def calcular_media_camadas_mais_baixas(df, qtd_camadas):
     if df.empty:
         return None, pd.DataFrame()
@@ -623,15 +661,30 @@ def calcular_media_camadas_mais_baixas(df, qtd_camadas):
     direcoes = selecionadas["Direção °"].astype(float).tolist()
     velocidades = selecionadas["Velocidade kt"].astype(float).tolist()
 
+    direcao_aritmetica = sum(direcoes) / len(direcoes)
+    direcao_circular = media_circular(direcoes)
+    direcao_ponderada = media_circular_ponderada(direcoes, velocidades)
+
     resumo = {
         "qtd_camadas": qtd_camadas,
+
+        # Velocidade média: média aritmética
         "vento_medio": sum(velocidades) / len(velocidades),
-        "direcao_media": media_circular(direcoes),
-        "direcao_ponderada": media_circular_ponderada(direcoes, velocidades),
+
+        # Direção média simples
+        "direcao_media_aritmetica": direcao_aritmetica,
+
+        # Direção circular
+        "direcao_media_circular": direcao_circular,
+
+        # Mantém compatibilidade com partes antigas do app
+        "direcao_media": direcao_circular,
+
+        # Direção ponderada pela velocidade
+        "direcao_ponderada": direcao_ponderada,
     }
 
     return resumo, selecionadas
-
 def estilo_fases(row):
     fase = row["Fase"]
 
@@ -713,7 +766,159 @@ def carregar_perfis_velame():
 def salvar_perfis_velame(perfis):
     with open(ARQUIVO_PERFIS_VELAME, "w", encoding="utf-8") as arquivo:
         json.dump(perfis, arquivo, ensure_ascii=False, indent=4)
+def formatar_coord_dm(lat, lon):
+    def converter(valor, tipo):
+        hemisferio = ""
 
+        if tipo == "lat":
+            hemisferio = "S" if valor < 0 else "N"
+        else:
+            hemisferio = "O" if valor < 0 else "L"
+
+        valor_abs = abs(valor)
+        graus = int(valor_abs)
+        minutos = (valor_abs - graus) * 60
+
+        return f"{graus}° {minutos:.3f}'{hemisferio}"
+
+    return f"{converter(lat, 'lat')}   {converter(lon, 'lon')}"
+def formatar_lat_dm(lat):
+    valor_abs = abs(lat)
+    graus = int(valor_abs)
+    minutos = (valor_abs - graus) * 60
+    hemisferio = "S" if lat < 0 else "N"
+    return f"{graus}° {minutos:.3f}'{hemisferio}"
+
+
+def formatar_lon_dm(lon):
+    valor_abs = abs(lon)
+    graus = int(valor_abs)
+    minutos = (valor_abs - graus) * 60
+    hemisferio = "O" if lon < 0 else "L"
+    return f"{graus}° {minutos:.3f}'{hemisferio}"
+
+
+def set_cell_shading(cell, fill):
+    tc_pr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:fill"), fill)
+    tc_pr.append(shd)
+
+
+def set_cell_text(cell, text, bold=False, size=12):
+    cell.text = ""
+    p = cell.paragraphs[0]
+    run = p.add_run(str(text))
+    run.bold = bold
+    run.font.size = Pt(size)
+    cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+
+
+def gerar_folder_piloto_docx(dados):
+    doc = Document()
+
+    section = doc.sections[0]
+    section.top_margin = Pt(36)
+    section.bottom_margin = Pt(36)
+    section.left_margin = Pt(36)
+    section.right_margin = Pt(36)
+
+    titulo = doc.add_paragraph()
+    titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = titulo.add_run("FOLDER DO PILOTO")
+    run.bold = True
+    run.font.size = Pt(14)
+
+    doc.add_paragraph("")
+
+    table = doc.add_table(rows=5, cols=2)
+    table.style = "Table Grid"
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+    linhas = [
+        (
+            f"Coordenada ZL: {dados['coord_zl']}",
+            f"Altitude da ZL: {dados['altitude_zl_ft']}"
+        ),
+        (
+            f"Eixo de lançamento: {dados['eixo_lancamento']}",
+            f"Altitude Adrm: {dados['altitude_aerodromo_ft']}"
+        ),
+        (
+            f"Eixo de navegação do saltador: {dados['eixo_navegacao']}",
+            f"Altitude PS: {dados['altitude_ps_ft']} / DAA: {dados['daa_qfe']}"
+        ),
+        (
+            f"Alt comandamento: {dados['altura_comandamento_ft']}",
+            f"Ajuste de altímetro: {dados['ajuste_altimetro']}"
+        ),
+        (
+            f"Velocidade da Anv: {dados['velocidade_anv']}",
+            "Pqdt embarcados:"
+        ),
+    ]
+
+    for i, linha in enumerate(linhas):
+        for j, texto in enumerate(linha):
+            cell = table.cell(i, j)
+            set_cell_text(cell, texto, bold=False, size=12)
+
+            if i in [0, 2]:
+                set_cell_shading(cell, "D9D9D9")
+        doc.add_paragraph("")
+
+    tabela_ref = doc.add_table(rows=4, cols=3)
+    tabela_ref.style = "Table Grid"
+    tabela_ref.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+    cores_colunas = ["E6332A", "FFFF66", "63B35D"]
+
+    cabecalhos = [
+        "4' FORA",
+        "1' FORA",
+        "PONTO DE SAÍDA - PS"
+    ]
+
+    linhas_ref = [
+        cabecalhos,
+        [
+            f"Latitude: {dados.get('lat_4_fora', '-')}",
+            f"Latitude: {dados.get('lat_1_fora', '')}",
+            f"Latitude: {dados.get('ps_lat_dm', '')}",
+        ],
+        [
+            f"Longitude: {dados.get('lon_4_fora', '-')}",
+            f"Longitude: {dados.get('lon_1_fora', '')}",
+            f"Longitude: {dados.get('ps_lon_dm', '')}",
+        ],
+        [
+            "LUZ VERMELHA",
+            "REPORTAR ANV NA FINAL",
+            "LUZ VERDE APÓS O N/A ROTA OU SOBRE O PS",
+        ],
+    ]
+
+    for i, linha in enumerate(linhas_ref):
+        for j, texto in enumerate(linha):
+            cell = tabela_ref.cell(i, j)
+
+            set_cell_text(
+                cell,
+                texto,
+                bold=(i == 0 or i == 3),
+                size=12
+            )
+
+            set_cell_shading(cell, cores_colunas[j])
+
+            for paragrafo in cell.paragraphs:
+                if i == 0 or i == 3:
+                    paragrafo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+
+    return buffer
 # =====================================================
 # MAPA AUXILIAR
 # =====================================================
@@ -762,12 +967,13 @@ st.warning(
     "First of Heroes"
 )
 
-aba_planejamento, aba_calculos, aba_camadas, aba_dkva = st.tabs(
+aba_planejamento, aba_calculos, aba_camadas, aba_dkva, aba_folder = st.tabs(
     [
         "Planejamento / Windgram",
         "Cálculo da Distância para Velame Aberto",
         "Calculadora dos Pontos de Controle",
-        "Salto sobre o Alvo (DKVA)"
+        "Salto sobre o Alvo (DKVA)",
+        "Folder do Piloto"
     ]
 )
 
@@ -1006,8 +1212,20 @@ with aba_planejamento:
 
                     if resumo_velame:
                         st.session_state.vento_medio_velame = resumo_velame["vento_medio"]
-                        st.session_state.direcao_media_velame = resumo_velame["direcao_media"]
 
+                        st.session_state.direcao_vento_verdadeira_kmz = float(
+                            resumo_velame.get(
+                                "direcao_media_aritmetica",
+                                resumo_velame.get("direcao_media", 0.0)
+                            )
+                        )
+
+                        st.session_state.direcao_media_velame = float(
+                            resumo_velame.get(
+                                "direcao_media_circular",
+                                resumo_velame.get("direcao_media", 0.0)
+                            )
+                        )
                     st.success("Windgram processado com sucesso.")
 
     with col_dir:
@@ -1023,10 +1241,21 @@ with aba_planejamento:
 
                 if resumo_velame:
                     vento = resumo_velame["vento_medio"]
-                    direcao_vento = resumo_velame["direcao_media"]
+
+                    direcao_vento_aritmetica = resumo_velame.get(
+                        "direcao_media_aritmetica",
+                        resumo_velame.get("direcao_media", 0.0)
+                    )
+
+                    direcao_vento_circular = resumo_velame.get(
+                        "direcao_media_circular",
+                        resumo_velame.get("direcao_media", 0.0)
+                    )
+
                     direcao_ponderada = resumo_velame["direcao_ponderada"]
 
-                    azimute_referencia_verdadeiro = direcao_vento
+                    azimute_referencia_verdadeiro = direcao_vento_aritmetica
+
                     azimute_referencia_magnetico = verdadeiro_para_magnetico(
                         azimute_referencia_verdadeiro,
                         declinacao
@@ -1035,14 +1264,32 @@ with aba_planejamento:
                     r1, r2 = st.columns(2)
 
                     with r1:
-                        st.metric("Média dos Ventos de Camada", f"{vento:.1f} kt")
-                        st.metric("Direção média dos ventos", f"{direcao_vento:.0f}°")
+                        st.metric(
+                            "Média dos Ventos de Camada",
+                            f"{vento:.1f} kt",
+                            help="Média aritmética das velocidades dos ventos."
+                        )
+
+                        st.metric(
+                            "Direção média dos ventos",
+                            f"{direcao_vento_aritmetica:.0f}°",
+                            help="Média aritmética simples dos azimutes."
+                        )
 
                     with r2:
-                        st.metric("Azimute de Navegação / Entrada de Cauda", f"{azimute_referencia_magnetico:.0f}°")
-                        st.metric("Entrada de Nariz", f"{contra_azimute(azimute_referencia_magnetico):.0f}°")
+                        st.metric(
+                            "Entrada de Nariz",
+                            f"{azimute_referencia_magnetico:.0f}°"
+                        )
 
-                    st.write(f"Referência verdadeira: **{azimute_referencia_verdadeiro:.0f}°**")
+                        st.metric(
+                            "Entrada de Cauda / Azimute de Navegação",
+                            f"{contra_azimute(azimute_referencia_magnetico):.0f}°"
+                        )
+                    st.write(
+                            f"Referência verdadeira — Média Circular: "
+                            f"**{azimute_referencia_verdadeiro:.0f}°**"
+)
                     st.write(f"Declinação aplicada: **{declinacao:.2f}°**")
                     st.write(f"Direção ponderada do vento: **{direcao_ponderada:.0f}°**")
                     st.write(f"Camadas de velame usadas: **{resumo_velame['qtd']}**")
@@ -1107,7 +1354,7 @@ with aba_calculos:
     ) / 1000.0
 
         A_kft = st.number_input(
-        "A — Altura de abertura do paraquedas (kft)",
+        "A — Altura de comandamento do paraquedas (kft)",
         value=altura_comandamento_kft_auto,
         step=0.1,
         key=f"calc_d_a_auto_{int(st.session_state.get('altura_comandamento_ft', 12000.0))}",
@@ -1176,53 +1423,211 @@ with aba_calculos:
             st.error(str(e))
 
     st.divider()
-    st.markdown("#### 📍 Consulta ambiental do PS")
+    st.markdown("#### 📍 Consulta do PS e Aeródromo")
 
-if "ps_lat" not in st.session_state or "ps_lon" not in st.session_state:
-    st.warning(
-        "Coordenada do PS ainda não registrada. "
-        "Calcule/registre o PS antes de consultar altitude e DAA/QFE."
+    # -----------------------------
+    # PS
+    # -----------------------------
+
+    ps_disponivel = "ps_lat" in st.session_state and "ps_lon" in st.session_state
+
+    if not ps_disponivel:
+        st.warning(
+            "Coordenada do PS ainda não registrada. "
+            "Gere o KMZ ou registre o PS antes de consultar altitude e DAA/QFE do PS."
+        )
+    else:
+        lat_padrao_consulta = float(st.session_state.ps_lat)
+        lon_padrao_consulta = float(st.session_state.ps_lon)
+
+        st.markdown("##### Ponto de Saída")
+
+        c_ps_lat, c_ps_lon = st.columns(2)
+
+        with c_ps_lat:
+            lat_consulta = st.number_input(
+                "Latitude do PS",
+                value=lat_padrao_consulta,
+                step=0.0001,
+                format="%.6f",
+                key=f"lat_consulta_ps_{round(lat_padrao_consulta, 6)}"
+            )
+
+        with c_ps_lon:
+            lon_consulta = st.number_input(
+                "Longitude do PS",
+                value=lon_padrao_consulta,
+                step=0.0001,
+                format="%.6f",
+                key=f"lon_consulta_ps_{round(lon_padrao_consulta, 6)}"
+            )
+
+        st.success("Coordenada do PS carregada automaticamente.")
+        st.caption(
+            f"PS: {lat_consulta:.6f}, {lon_consulta:.6f} | "
+            f"Origem: {st.session_state.get('ps_origem', 'não informada')}"
+        )
+
+       # -----------------------------
+    # AERÓDROMO
+    # -----------------------------
+
+    st.markdown("##### Aeródromo de partida")
+
+    with st.form("form_busca_aerodromo"):
+        busca_aerodromo = st.text_input(
+            "Buscar aeródromo/localidade de partida",
+            placeholder="Ex: Campo Grande MS, Anápolis, Goiânia, Base Aérea..."
+        )
+
+        buscar_aerodromo = st.form_submit_button("🔎 Buscar local do aeródromo")
+
+    if buscar_aerodromo:
+        if busca_aerodromo.strip():
+            resultado_aero = buscar_localidade(busca_aerodromo)
+
+            if resultado_aero:
+                st.session_state.lat_aerodromo_partida = float(resultado_aero["lat"])
+                st.session_state.lon_aerodromo_partida = float(resultado_aero["lon"])
+                st.session_state.mapa_aerodromo_rev += 1
+
+                st.success(
+                    f"{resultado_aero['nome']} | Fonte: {resultado_aero.get('fonte', 'Busca online')}"
+                )
+
+                st.rerun()
+
+            else:
+                st.error(
+                    "Aeródromo/localidade não encontrado. Tente escrever com o estado, exemplo: Campo Grande MS."
+                )
+
+    c_aero_lat, c_aero_lon = st.columns(2)
+
+    with c_aero_lat:
+        lat_aerodromo = st.number_input(
+            "Latitude do aeródromo de partida",
+            value=float(st.session_state.lat_aerodromo_partida),
+            step=0.0001,
+            format="%.6f",
+            key=f"lat_aerodromo_partida_input_{st.session_state.mapa_aerodromo_rev}"
+        )
+
+    with c_aero_lon:
+        lon_aerodromo = st.number_input(
+            "Longitude do aeródromo de partida",
+            value=float(st.session_state.lon_aerodromo_partida),
+            step=0.0001,
+            format="%.6f",
+            key=f"lon_aerodromo_partida_input_{st.session_state.mapa_aerodromo_rev}"
+        )
+
+    st.session_state.lat_aerodromo_partida = float(lat_aerodromo)
+    st.session_state.lon_aerodromo_partida = float(lon_aerodromo)
+
+    st.markdown("###### Selecionar aeródromo no mapa")
+
+    mapa_aerodromo = criar_mapa_base(
+        [
+            st.session_state.lat_aerodromo_partida,
+            st.session_state.lon_aerodromo_partida
+        ],
+        zoom=12
     )
 
-else:
-    lat_padrao_consulta = float(st.session_state.ps_lat)
-    lon_padrao_consulta = float(st.session_state.ps_lon)
+    folium.Marker(
+        location=[
+            st.session_state.lat_aerodromo_partida,
+            st.session_state.lon_aerodromo_partida
+        ],
+        popup="Aeródromo de partida",
+        tooltip="Aeródromo de partida",
+        icon=folium.Icon(color="blue", icon="flag"),
+    ).add_to(mapa_aerodromo)
 
-    c_ps_lat, c_ps_lon = st.columns(2)
+    resultado_mapa_aerodromo = st_folium(
+        mapa_aerodromo,
+        width=None,
+        height=360,
+        key=f"mapa_aerodromo_{st.session_state.mapa_aerodromo_rev}",
+        returned_objects=["last_clicked"],
+    )
 
-    with c_ps_lat:
-        lat_consulta = st.number_input(
-            "Latitude do PS",
-            value=lat_padrao_consulta,
-            step=0.0001,
-            format="%.6f",
-            key=f"lat_consulta_ps_{round(lat_padrao_consulta, 6)}"
+    if resultado_mapa_aerodromo and resultado_mapa_aerodromo.get("last_clicked"):
+        lat_click_aero = float(resultado_mapa_aerodromo["last_clicked"]["lat"])
+        lon_click_aero = float(resultado_mapa_aerodromo["last_clicked"]["lng"])
+
+        novo_clique_aero = [
+            round(lat_click_aero, 7),
+            round(lon_click_aero, 7)
+        ]
+
+        if st.session_state.ultimo_clique_aerodromo != novo_clique_aero:
+            st.session_state.ultimo_clique_aerodromo = novo_clique_aero
+            st.session_state.lat_aerodromo_partida = lat_click_aero
+            st.session_state.lon_aerodromo_partida = lon_click_aero
+            st.session_state.mapa_aerodromo_rev += 1
+            st.rerun()
+
+    st.caption(
+        f"Aeródromo selecionado: "
+        f"{st.session_state.lat_aerodromo_partida:.6f}, "
+        f"{st.session_state.lon_aerodromo_partida:.6f}"
+    )
+    # -----------------------------
+    # BOTÕES
+    # -----------------------------
+
+    b1, b2 = st.columns(2)
+
+    with b1:
+        consultar_ps = st.button(
+            "🌎 Consultar altitude e DAA/QFE do PS",
+            key="btn_consultar_ambiente_ps"
         )
 
-    with c_ps_lon:
-        lon_consulta = st.number_input(
-            "Longitude do PS",
-            value=lon_padrao_consulta,
-            step=0.0001,
-            format="%.6f",
-            key=f"lon_consulta_ps_{round(lon_padrao_consulta, 6)}"
+    with b2:
+        calcular_altimetria = st.button(
+            "🧮 Calcular Diferença Altimétrica",
+            key="btn_calcular_diferenca_altimetrica"
         )
 
-    st.success("Coordenada do PS carregada automaticamente.")
-    st.caption(f"PS: {lat_consulta:.6f}, {lon_consulta:.6f}")
+    if consultar_ps:
+        if not ps_disponivel:
+            st.error("PS ainda não registrado. Gere o KMZ primeiro ou registre o PS.")
+        else:
+            altitude_ps_ft, qfe_ps_hpa = consultar_terreno_e_pressao(
+                lat_consulta,
+                lon_consulta
+            )
 
-    if st.button("🌎 Consultar altitude e DAA/QFE", key="btn_consultar_ambiente_ps"):
-        altitude_consulta_ft, qfe_consulta_hpa = consultar_terreno_e_pressao(
-            lat_consulta,
-            lon_consulta
+            st.session_state.altitude_consulta_ft = altitude_ps_ft
+            st.session_state.qfe_consulta_hpa = qfe_ps_hpa
+
+    if calcular_altimetria:
+        altitude_aerodromo_ft, _ = consultar_terreno_e_pressao(
+            lat_aerodromo,
+            lon_aerodromo
         )
 
-        st.session_state.altitude_consulta_ft = altitude_consulta_ft
-        st.session_state.qfe_consulta_hpa = qfe_consulta_hpa
+        altitude_alvo_ft_ref = float(st.session_state.get("altitude_ft", 0.0))
 
-    c_ps1, c_ps2 = st.columns(2)
+        st.session_state.altitude_aerodromo_partida_ft = altitude_aerodromo_ft
 
-    with c_ps1:
+        if altitude_aerodromo_ft is not None:
+            st.session_state.altimetro_aerodromo_alvo_ft = (
+                altitude_aerodromo_ft - altitude_alvo_ft_ref
+            )
+        else:
+            st.session_state.altimetro_aerodromo_alvo_ft = None
+
+    # -----------------------------
+    # RESULTADOS
+    # -----------------------------
+
+    r1, r2 = st.columns(2)
+
+    with r1:
         altitude_consulta_ft = st.session_state.get("altitude_consulta_ft")
 
         if altitude_consulta_ft is not None:
@@ -1233,7 +1638,7 @@ else:
         else:
             st.metric("Altitude do terreno no PS", "—")
 
-    with c_ps2:
+    with r2:
         qfe_consulta_hpa = st.session_state.get("qfe_consulta_hpa")
 
         if qfe_consulta_hpa is not None:
@@ -1241,8 +1646,32 @@ else:
         else:
             st.metric("DAA / QFE no PS", "—")
 
-    st.caption("Fonte de consulta: Open-Meteo Elevation API e Open-Meteo Forecast Surface Pressure.")
-    st.divider()    
+    r3, r4 = st.columns(2)
+
+    with r3:
+        altitude_aerodromo_ft = st.session_state.get("altitude_aerodromo_partida_ft")
+
+        if altitude_aerodromo_ft is not None:
+            st.metric(
+                "Altitude do aeródromo de partida",
+                f"{altitude_aerodromo_ft:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", ".")
+            )
+        else:
+            st.metric("Altitude do aeródromo de partida", "—")
+
+    with r4:
+        altimetro_ft = st.session_state.get("altimetro_aerodromo_alvo_ft")
+
+        if altimetro_ft is not None:
+            st.metric(
+                "Diferença Altimétrica",
+                f"{altimetro_ft:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", ".")
+            )
+            st.caption("Altitude do aeródromo de partida - altitude do alvo")
+        else:
+            st.metric("Diferença Altimétrica", "—")
+
+    st.caption("Fonte de consulta: Open-Meteo Elevation API e Open-Meteo Forecast Surface Pressure.")    
     with st.expander("Salvar novo perfil"):
         with st.form("form_salvar_perfil_velame", clear_on_submit=True):
             novo_nome = st.text_input(
@@ -1530,53 +1959,62 @@ with aba_camadas:
         if st.button("🗑️ Limpar Todos os Pontos"):
             st.session_state.pontos_controle = []
             st.rerun()
-            # -----------------------------
-    # EXPORTAÇÃO KMZ
+    # -----------------------------
+    # EXPORTAÇÃO KMZ (GERAL / VELAME ABERTO)
     # -----------------------------
     st.divider()
     st.markdown("### 🌍 Exportar Planejamento (Google Earth)")
 
-    # Verifica se há D total e Windgram processado para traçar a reta
     if st.session_state.get("df_windgram") is not None and st.session_state.get("distancia_velame_aberto_nm", 0) > 0:
         
-        if st.button("Gerar Arquivo KMZ", type="primary"):
-            # Dados base
+        tipo_lancamento = st.radio(
+            "Selecione o Tipo de Lançamento (Para Navegação):",
+            ["Lançamento de Nariz", "Lançamento de Cauda"],
+            horizontal=True,
+            key="tipo_lanc_geral"
+        )
+        
+        adicional_cauda_m = 0.0
+        if tipo_lancamento == "Lançamento de Cauda":
+            st.markdown("#### Parâmetros de Cauda")
+            adicional_cauda_m = st.number_input("Extensão da Cauda (metros)", min_value=0.0, value=300.0, step=50.0, key="ext_cauda_geral")
+            st.info(f"📍 Uma reta amarela de {adicional_cauda_m:.0f}m será adicionada ao final da distância D. O PS será deslocado para o fim desta reta.")
+
+        if st.button("Gerar Arquivo KMZ", type="primary", key="btn_kmz_geral"):
+            import math
+            
             lat_alvo = st.session_state.lat
             lon_alvo = st.session_state.lon
             dist_total_km = nm_para_km(st.session_state.distancia_velame_aberto_nm)
             
-            # Direção do Vento (Azimute Verdadeiro calculado na aba 1)
-            azimute_vento = st.session_state.resumo_velame["direcao_media"]
+            azimute_vento = float(
+                st.session_state.get(
+        "direcao_vento_verdadeira_kmz",
+                    st.session_state.resumo_velame.get(
+            "direcao_media_aritmetica",
+                        st.session_state.resumo_velame.get("direcao_media", 0.0)
+        )
+    )
+)
             
-            # Ponto final da reta (Abertura do Velame)
-            lat_fim, lon_fim = calcular_coordenada_destino(lat_alvo, lon_alvo, dist_total_km, azimute_vento)
-            st.session_state.ps_lat = lat_fim
-            st.session_state.ps_lon = lon_fim
-            st.session_state.ps_origem = "PS da Distância D"
-            # Construindo o código KML
+            # Ponto final da reta vermelha (Distância D original)
+            lat_d, lon_d = calcular_coordenada_destino(lat_alvo, lon_alvo, dist_total_km, azimute_vento)
+            
+            estilos_kml = """
+            <Style id="linhaVermelha"><LineStyle><color>ff0000ff</color><width>4</width></LineStyle></Style>
+            <Style id="linhaAmarela"><LineStyle><color>ff00ffff</color><width>4</width></LineStyle></Style>
+            <Style id="iconeAlvo"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-stars.png</href></Icon></IconStyle></Style>
+            <Style id="iconePonto"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href></Icon></IconStyle></Style>
+            """
+            
             kml_str = f"""<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
     <name>Planejamento SLOP</name>
-    
-    <Style id="linhaEixo">
-      <LineStyle>
-        <color>ff0000ff</color> <width>3</width>
-      </LineStyle>
-    </Style>
-    <Style id="iconeAlvo">
-      <IconStyle>
-        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-stars.png</href></Icon>
-      </IconStyle>
-    </Style>
-    <Style id="iconePonto">
-      <IconStyle>
-        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href></Icon>
-      </IconStyle>
-    </Style>
+    {estilos_kml}
 
     <Placemark>
-      <name>Alvo </name>
+      <name>Alvo</name>
       <styleUrl>#iconeAlvo</styleUrl>
       <Point>
         <coordinates>{lon_alvo},{lat_alvo},0</coordinates>
@@ -1584,24 +2022,51 @@ with aba_camadas:
     </Placemark>
 
     <Placemark>
-      <name>Eixo de Navegação ({dist_total_km:.2f} km)</name>
-      <styleUrl>#linhaEixo</styleUrl>
+      <name>Distância D ({(dist_total_km * 1000):.0f} m)</name>
+      <styleUrl>#linhaVermelha</styleUrl>
       <LineString>
         <extrude>1</extrude>
         <tessellate>1</tessellate>
         <coordinates>
           {lon_alvo},{lat_alvo},0
-          {lon_fim},{lat_fim},0
+          {lon_d},{lat_d},0
         </coordinates>
       </LineString>
     </Placemark>
-
+"""
+            
+            # Se for nariz, o PS é no ponto D
+            lat_ps_final = lat_d
+            lon_ps_final = lon_d
+            
+            if tipo_lancamento == "Lançamento de Cauda":
+                # Calcula o novo ponto final estendido (Amarelo)
+                lat_ps_final, lon_ps_final = calcular_coordenada_destino(lat_d, lon_d, adicional_cauda_m / 1000.0, azimute_vento)
+                st.session_state.ps_lat = lat_ps_final
+                st.session_state.ps_lon = lon_ps_final
+                st.session_state.ps_origem = f"PS Final - {tipo_lancamento}"
+                kml_str += f"""
     <Placemark>
-      <name>PS</name>
+      <name>Cauda / Arrasto ({adicional_cauda_m:.0f} m)</name>
+      <styleUrl>#linhaAmarela</styleUrl>
+      <LineString>
+        <extrude>1</extrude>
+        <tessellate>1</tessellate>
+        <coordinates>
+          {lon_d},{lat_d},0
+          {lon_ps_final},{lat_ps_final},0
+        </coordinates>
+      </LineString>
+    </Placemark>
+"""
+
+            kml_str += f"""
+    <Placemark>
+      <name>PS Final</name>
       <description>Ponto de Saída / Início da Navegação</description>
       <styleUrl>#iconePonto</styleUrl>
       <Point>
-        <coordinates>{lon_fim},{lat_fim},0</coordinates>
+        <coordinates>{lon_ps_final},{lat_ps_final},0</coordinates>
       </Point>
     </Placemark>
 """
@@ -1609,7 +2074,6 @@ with aba_camadas:
             for p in st.session_state.pontos_controle:
                 lat_pc, lon_pc = calcular_coordenada_destino(lat_alvo, lon_alvo, p["Dist (km)"], azimute_vento)
                 
-                # Formatando a altura para kft com 1 casa decimal e vírgula
                 altura_kft = p['Alt P Ctle (ft)'] / 1000
                 altura_formatada = f"{altura_kft:.1f}".replace(".", ",")
                 nome_pc = f"P Ct {p['ID']} - {altura_formatada}"
@@ -1627,17 +2091,14 @@ with aba_camadas:
     </Placemark>
 """
             
-            # Fecha o XML
             kml_str += """  </Document>\n</kml>"""
             
-            # Empacota em um arquivo KMZ (zip)
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 zip_file.writestr("planejamento.kml", kml_str.encode("utf-8"))
             
             kmz_bytes = zip_buffer.getvalue()
             
-            # Libera o download
             st.success("KMZ gerado com sucesso!")
             st.download_button(
                 label="🗺️ Baixar KMZ para Google Earth",
@@ -1660,7 +2121,15 @@ with aba_dkva:
         st.warning("⚠️ Volte na aba 'Planejamento / Windgram' e processe o Windgram para obter o Vento Médio e a Direção.")
     else:
         v_usado = st.session_state.resumo_velame["vento_medio"]
-        direcao_vento = st.session_state.resumo_velame["direcao_media"]
+        direcao_vento = float(
+    st.session_state.get(
+        "direcao_vento_verdadeira_kmz",
+        st.session_state.resumo_velame.get(
+            "direcao_media_aritmetica",
+            st.session_state.resumo_velame.get("direcao_media", 0.0)
+        )
+    )
+)
         K_alvo = 25
 
         st.markdown("### 1. Parâmetros")
@@ -1927,4 +2396,187 @@ with aba_dkva:
                 data=kmz_bytes,
                 file_name="DKVA_Tatico.kmz",
                 mime="application/vnd.google-earth.kmz"
+            )
+            # =====================================================
+# ABA FOLDER DO PILOTO
+# =====================================================
+
+with aba_folder:
+    st.subheader("📄 Folder do Piloto")
+
+    if not DOCX_OK:
+        st.error(
+            "A biblioteca python-docx não está instalada. "
+            "Adicione 'python-docx' ao requirements.txt."
+        )
+    else:
+        st.info(
+            "Esta aba gera um arquivo Word com os dados já calculados no app."
+        )
+
+        velocidade_anv = st.number_input(
+            "Velocidade da Anv (m/s)",
+            value=70.0,
+            step=5.0,
+            key="folder_velocidade_anv"
+        )
+
+        tipo_lancamento_folder = st.selectbox(
+            "Tipo de lançamento para o folder",
+            ["Lançamento de Nariz", "Lançamento de Cauda"],
+            key="folder_tipo_lancamento"
+        )
+        st.markdown("### Referências 4' fora / 1' fora / PS")
+
+        ref1, ref2, ref3 = st.columns(3)
+
+        with ref1:
+            st.markdown("#### 4' FORA")
+            lat_4_fora = st.text_input(
+                "Latitude 4' fora",
+                value="-",
+                key="folder_lat_4_fora"
+            )
+            lon_4_fora = st.text_input(
+                "Longitude 4' fora",
+                value="-",
+                key="folder_lon_4_fora"
+            )
+
+        with ref2:
+            st.markdown("#### 1' FORA")
+            lat_1_fora = st.text_input(
+                "Latitude 1' fora",
+                value="",
+                placeholder="Ex: 20° 33.998'S",
+                key="folder_lat_1_fora"
+            )
+            lon_1_fora = st.text_input(
+                "Longitude 1' fora",
+                value="",
+                placeholder="Ex: 55° 1.541'O",
+                key="folder_lon_1_fora"
+            )
+
+        with ref3:
+            st.markdown("#### PONTO DE SAÍDA - PS")
+
+            if "ps_lat" in st.session_state and "ps_lon" in st.session_state:
+                ps_lat_dm = formatar_lat_dm(float(st.session_state.ps_lat))
+                ps_lon_dm = formatar_lon_dm(float(st.session_state.ps_lon))
+
+                st.success("PS carregado automaticamente.")
+                st.write(f"Latitude: **{ps_lat_dm}**")
+                st.write(f"Longitude: **{ps_lon_dm}**")
+
+            else:
+                ps_lat_dm = ""
+                ps_lon_dm = ""
+
+                st.warning(
+                    "PS ainda não registrado. Gere o KMZ ou registre o PS antes de gerar o folder completo."
+                )
+        declinacao_ref = float(
+            st.session_state.get(
+                "declinacao_usada",
+                st.session_state.get("declinacao", 0.0)
+            ) or 0.0
+        )
+
+        direcao_base_verdadeira = float(
+            st.session_state.get(
+                "direcao_vento_verdadeira_kmz",
+                0.0
+            )
+        )
+
+        eixo_nariz = verdadeiro_para_magnetico(
+            direcao_base_verdadeira,
+            declinacao_ref
+        )
+
+        eixo_cauda = contra_azimute(eixo_nariz)
+
+        if tipo_lancamento_folder == "Lançamento de Nariz":
+            eixo_lancamento = eixo_nariz
+        else:
+            eixo_lancamento = eixo_cauda
+
+        eixo_navegacao = eixo_cauda
+
+        coord_zl = formatar_coord_dm(
+            float(st.session_state.lat),
+            float(st.session_state.lon)
+        )
+
+        altitude_zl_ft = float(st.session_state.get("altitude_ft", 0.0))
+        altura_comandamento_ft = float(st.session_state.get("altura_comandamento_ft", 0.0))
+
+        altitude_aerodromo_ft = st.session_state.get("altitude_aerodromo_partida_ft")
+        altitude_ps_ft = st.session_state.get("altitude_consulta_ft")
+        qfe_hpa = st.session_state.get("qfe_consulta_hpa")
+        ajuste_altimetro_ft = st.session_state.get("altimetro_aerodromo_alvo_ft")
+
+        def fmt_ft(valor):
+            if valor is None:
+                return ""
+            return f"{valor:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", ".")
+
+        def fmt_qfe(valor):
+            if valor is None:
+                return ""
+            return f"{valor:.0f}".zfill(4)
+
+        dados_folder = {
+            "coord_zl": coord_zl,
+            "eixo_lancamento": f"{eixo_lancamento:.0f}°",
+            "eixo_navegacao": f"{eixo_navegacao:.0f}°",
+            "altura_comandamento_ft": fmt_ft(altura_comandamento_ft),
+            "velocidade_anv": f"{velocidade_anv:.0f} m/s",
+            "altitude_zl_ft": fmt_ft(altitude_zl_ft),
+            "altitude_aerodromo_ft": fmt_ft(altitude_aerodromo_ft),
+            "altitude_ps_ft": fmt_ft(altitude_ps_ft),
+            "daa_qfe": fmt_qfe(qfe_hpa),
+            "ajuste_altimetro": (
+                f"{ajuste_altimetro_ft:+.0f}".replace(".", ",")
+                if ajuste_altimetro_ft is not None
+                else ""
+            ),
+        
+                    "lat_4_fora": lat_4_fora,
+            "lon_4_fora": lon_4_fora,
+            "lat_1_fora": lat_1_fora,
+            "lon_1_fora": lon_1_fora,
+            "ps_lat_dm": ps_lat_dm,
+            "ps_lon_dm": ps_lon_dm,
+}
+        st.markdown("### Prévia dos dados")
+
+        c1, c2 = st.columns(2)
+
+        with c1:
+            st.write(f"**Coordenada ZL:** {dados_folder['coord_zl']}")
+            st.write(f"**Eixo de lançamento:** {dados_folder['eixo_lancamento']}")
+            st.write(f"**Eixo de navegação:** {dados_folder['eixo_navegacao']}")
+            st.write(f"**Alt comandamento:** {dados_folder['altura_comandamento_ft']}")
+            st.write(f"**Velocidade da Anv:** {dados_folder['velocidade_anv']}")
+
+        with c2:
+            st.write(f"**Altitude da ZL:** {dados_folder['altitude_zl_ft']}")
+            st.write(f"**Altitude Adrm:** {dados_folder['altitude_aerodromo_ft']}")
+            st.write(
+                f"**Altitude PS / DAA:** "
+                f"{dados_folder['altitude_ps_ft']} / {dados_folder['daa_qfe']}"
+            )
+            st.write(f"**Ajuste de altímetro:** {dados_folder['ajuste_altimetro']}")
+            st.write("**Pqdt embarcados:** ")
+
+        if st.button("📄 Gerar Folder do Piloto", type="primary"):
+            docx_buffer = gerar_folder_piloto_docx(dados_folder)
+
+            st.download_button(
+                label="⬇️ Baixar Folder do Piloto em Word",
+                data=docx_buffer,
+                file_name="Folder_do_Piloto.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
