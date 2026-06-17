@@ -50,33 +50,35 @@ ARQUIVO_PERFIS_VELAME = "perfis_velame.json"
 # TABELA NOAA READY — PRESSÃO / ALTITUDE
 # =====================================================
 
+# =====================================================
+# TABELA NOAA READY — PRESSÃO / ALTITUDE
+# =====================================================
+
 PRESSAO_ALTITUDE_NOAA = {
-    20: 30000,
-    50: 28500,
-    70: 27900,
-    100: 27000,
-    150: 25500,
-    200: 24000,
-    250: 22500,
-    300: 21000,
-    350: 19500,
-    400: 18000,
-    450: 16500,
-    500: 15000,
-    550: 13500,
-    600: 12000,
-    650: 10500,
-    700: 9000,
-    750: 7500,
-    800: 6000,
-    850: 4500,
-    900: 3000,
-    925: 2250,
-    950: 1500,
-    975: 750,
+    20: 76500,
+    50: 63300,
+    100: 51800,
+    150: 44300,
+    200: 38600,
+    250: 34000,
+    300: 30000,
+    350: 26600,
+    400: 23500,
+    450: 20800,
+    500: 18200,
+    550: 15900,
+    600: 13800,
+    650: 11700,
+    700: 9800,
+    750: 8000,
+    800: 6500,
+    850: 4800,
+    900: 3250,
+    925: 2500,
+    950: 1750,
+    975: 1000,
     1000: 0,
 }
-
 
 # =====================================================
 # ESTADO INICIAL
@@ -699,6 +701,28 @@ def montar_dataframe_windgram(
     else:
         topo_saida_ft_msl = topo_comandamento_ft_msl
 
+    # ==========================================================
+    # LÓGICA DE PAPIRO: METADE DO INTERVALO (VENTO DE SOLO)
+    # ==========================================================
+    limite_vento_solo_bruto = altitude_alvo_ft + 750
+    altitudes_noaa = sorted([r["altitude_ft_msl"] for r in registros])
+    limite_vento_solo_eficaz = limite_vento_solo_bruto
+    
+    for i in range(len(altitudes_noaa) - 1):
+        l_inf = altitudes_noaa[i]
+        l_sup = altitudes_noaa[i+1]
+        
+        # Verifica em qual intervalo o ZL + 750 caiu
+        if l_inf <= limite_vento_solo_bruto <= l_sup:
+            meio_do_intervalo = (l_inf + l_sup) / 2.0
+            if limite_vento_solo_bruto > meio_do_intervalo:
+                # Passou da metade: desconsidera a de baixo (Vento de solo vai até l_inf)
+                limite_vento_solo_eficaz = l_inf
+            else:
+                # Não passou da metade: mantém a de baixo no Velame (Vento de solo corta antes)
+                limite_vento_solo_eficaz = l_inf - 1
+            break
+
     for r in registros:
         if coluna not in r["valores"]:
             continue
@@ -708,20 +732,19 @@ def montar_dataframe_windgram(
 
         altura_sobre_alvo = alt - altitude_alvo_ft
 
-        limite_vento_solo_ft_msl = altitude_alvo_ft + 750
-
-        if altitude_alvo_ft <= alt <= limite_vento_solo_ft_msl:
+        # Classificação das fases com a nova regra
+        if alt < altitude_alvo_ft:
+            fase = "Abaixo do alvo"
+        elif alt <= limite_vento_solo_eficaz:
             fase = "Vento de solo (desprezado)"
-        elif limite_vento_solo_ft_msl < alt <= topo_velame_ft_msl:
+        elif limite_vento_solo_eficaz < alt <= topo_velame_ft_msl:
             fase = "Velame aberto"
         elif topo_velame_ft_msl < alt <= topo_comandamento_ft_msl:
             fase = "Comandamento"
         elif topo_comandamento_ft_msl < alt <= topo_saida_ft_msl:
             fase = "Queda livre"
-        elif alt > topo_saida_ft_msl:
-            fase = "Acima da saída"
         else:
-            fase = "Abaixo do alvo"
+            fase = "Acima da saída"
 
         linhas.append({
             "Altitude NOAA ft": alt,
