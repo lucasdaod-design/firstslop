@@ -1354,7 +1354,7 @@ with aba_planejamento:
 
                         st.session_state.direcao_vento_verdadeira_kmz = float(
                             resumo_velame.get(
-                                "direcao_media_aritmetica",
+                                "direcao_ponderada",
                                 resumo_velame.get("direcao_media", 0.0)
                             )
                         )
@@ -2133,8 +2133,8 @@ with aba_camadas:
             st.session_state.get(
         "direcao_vento_verdadeira_kmz",
         st.session_state.resumo_velame.get(
-            "direcao_media_aritmetica",
-            st.session_state.resumo_velame.get("direcao_media", 0.0)
+            "direcao_ponderada",
+            st.session_state.resumo_velame.get("direcao_ponderada", 0.0)
         )
     )
 )
@@ -2344,8 +2344,8 @@ with aba_dkva:
     st.session_state.get(
         "direcao_vento_verdadeira_kmz",
         st.session_state.resumo_velame.get(
-            "direcao_media_aritmetica",
-            st.session_state.resumo_velame.get("direcao_media", 0.0)
+            "direcao_ponderada",
+            st.session_state.resumo_velame.get("direcao_ponderada", 0.0)
         )
     )
 )
