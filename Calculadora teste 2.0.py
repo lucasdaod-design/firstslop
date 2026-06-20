@@ -976,8 +976,33 @@ def set_cell_text(cell, text, bold=False, size=12):
     run.font.size = Pt(size)
     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
 
+def obter_imagem_mapa_estatico(lat_alvo, lon_alvo, lat_ps, lon_ps, api_key):
+    if not api_key:
+        return None, "Chave da API ausente no arquivo secrets."
+    
+    # Monta a URL que pede a foto para o satélite do Google
+    url = (
+        f"https://maps.googleapis.com/maps/api/staticmap?"
+        f"size=640x360&maptype=hybrid"
+        f"&markers=color:red|label:A|{lat_alvo},{lon_alvo}"
+        f"&markers=color:blue|label:P|{lat_ps},{lon_ps}"
+        f"&path=color:0xff0000ff|weight:4|{lat_alvo},{lon_alvo}|{lat_ps},{lon_ps}"
+        f"&key={api_key}"
+    )
+    
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            import io
+            return io.BytesIO(r.content), None
+        else:
+            # Se o Google negar, ele vai cuspir o erro exato
+            return None, f"Acesso Negado (Erro {r.status_code}). Verifique a API no Google Cloud."
+    except Exception as e:
+        return None, str(e)
 
-def gerar_folder_piloto_docx(dados):
+def gerar_folder_piloto_docx(dados, imagem_mapa=None):
+    from docx.shared import Inches
     doc = Document()
 
     section = doc.sections[0]
@@ -992,7 +1017,14 @@ def gerar_folder_piloto_docx(dados):
     run.bold = True
     run.font.size = Pt(14)
 
-    doc.add_paragraph("")
+    # --- NOVO: COLA A IMAGEM DO SATÉLITE ---
+    if imagem_mapa:
+        p_img = doc.add_paragraph()
+        p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run_img = p_img.add_run()
+        run_img.add_picture(imagem_mapa, width=Inches(6.0)) # Tamanho perfeito para a folha retrato
+    else:
+        doc.add_paragraph("")
 
     table = doc.add_table(rows=5, cols=2)
     table.style = "Table Grid"
@@ -1587,6 +1619,16 @@ with aba_calculos:
                 st.session_state.fs_velame_aberto_kft = FS_kft
                 st.session_state.ctehz_velame_aberto_kt = CteHz
                 st.session_state.k_velame_aberto_kft_h = K
+                
+                # --- NOVO: SALVAR O PONTO D NA MEMÓRIA IMEDIATAMENTE ---
+                azimute_vento = float(st.session_state.get("direcao_vento_verdadeira_kmz", 0.0))
+                dist_km = nm_para_km(D)
+                lat_d, lon_d = calcular_coordenada_destino(st.session_state.lat, st.session_state.lon, dist_km, azimute_vento)
+                
+                st.session_state.ps_lat = lat_d
+                st.session_state.ps_lon = lon_d
+                st.session_state.ps_origem = "Ponto Limite D (Velame Aberto)"
+                # ---------------------------------------------------------
 
                 r1, r2, r3 = st.columns(3)
 
@@ -2295,15 +2337,19 @@ with aba_camadas:
             # Se for nariz, o PS é no ponto D
             lat_ps_final = lat_d
             lon_ps_final = lon_d
+            st.session_state.ps_origem = "PS Final - Lançamento de Nariz"
             
             if tipo_lancamento == "Lançamento de Cauda":
                 # Calcula o novo ponto final estendido (Amarelo)
                 lat_ps_final, lon_ps_final = calcular_coordenada_destino(lat_d, lon_d, adicional_cauda_m / 1000.0, azimute_vento)
-                st.session_state.ps_lat = lat_ps_final
-                st.session_state.ps_lon = lon_ps_final
                 st.session_state.ps_origem = f"PS Final - {tipo_lancamento}"
-                if dog_leg:
-                 st.info(
+                
+            # AGORA SIM: Salva na memória para QUALQUER um dos casos (Nariz ou Cauda)
+            st.session_state.ps_lat = lat_ps_final
+            st.session_state.ps_lon = lon_ps_final
+
+            if dog_leg:
+                st.info(
         f"Dog Leg detectado: quebra de {dog_leg['diferenca_graus']:.0f}°. "
         f"KMZ será exportado com 1 reta vermelha + 2 retas azuis."
     )
@@ -2461,7 +2507,8 @@ with aba_dkva:
                 "A (Altura de abertura em kft)",
                 value=1.2,
                 step=0.1,
-                help="Ex: 1.2 significa 1.200 pés."
+                help="Ex: 1.2 significa 1.200 pés.",
+                key="dkva_a_kft" # <--- ADICIONADO ISSO AQUI
             )
 
         st.divider()
@@ -2488,7 +2535,8 @@ with aba_dkva:
         tipo_lanc_dkva = st.radio(
             "Selecione o Tipo de Lançamento:",
             ["Lançamento de Nariz", "Lançamento de Cauda", "Lançamento Boca do Cone"],
-            horizontal=True
+            horizontal=True,
+            key="tipo_lanc_dkva_radio" # <--- ADICIONADO ISSO AQUI
         )
 
         offset_base = 0.0
@@ -2595,70 +2643,114 @@ with aba_dkva:
             az_vento = calc_rumo(lat_alvo, lon_alvo, lat_pl, lon_pl)
             dec_mag = st.session_state.get("declinacao", 0.0)
             
-            # Estilos visuais do Google Earth (Cores KML: Alpha-Azul-Verde-Vermelho)
+            # =====================================================
+            # CÁLCULO DA DIREÇÃO DE POUSO (2 CAMADAS MAIS BAIXAS)
+            # =====================================================
+            linha_pouso_kml = ""
+            df_velame = st.session_state.get("df_windgram")
+            if df_velame is not None and not df_velame.empty:
+                base_velame = df_velame[df_velame["Fase"] == "Velame aberto"].copy()
+                if not base_velame.empty:
+                    df_baixas = base_velame.sort_values("Altitude NOAA ft", ascending=True).head(2)
+                    dir_b = df_baixas["Direção °"].astype(float).tolist()
+                    vel_b = df_baixas["Velocidade kt"].astype(float).tolist()
+                    
+                    if len(dir_b) > 0:
+                        dir_pouso = media_circular_ponderada(dir_b, vel_b)
+                        if dir_pouso is None:
+                            dir_pouso = sum(dir_b) / len(dir_b)
+                        vel_pouso = sum(vel_b) / len(vel_b)
+                        
+                        lat_pouso, lon_pouso = mover_ponto(lat_alvo, lon_alvo, 0.5, dir_pouso)
+                        
+                        linha_pouso_kml = f"""
+            <Placemark>
+              <name>Eixo de Pouso (500m)</name>
+              <styleUrl>#linhaVerde</styleUrl>
+              <LineString>
+                <extrude>1</extrude>
+                <tessellate>1</tessellate>
+                <coordinates>
+                  {lon_alvo},{lat_alvo},0
+                  {lon_pouso},{lat_pouso},0
+                </coordinates>
+              </LineString>
+            </Placemark>
+            <Placemark>
+              <name>Provável direção de pouso - {vel_pouso:.1f} kt</name>
+              <description>Direção ponderada: {dir_pouso:.0f}° | Média das {len(dir_b)} camadas mais baixas</description>
+              <styleUrl>#iconePonto</styleUrl>
+              <Point>
+                <coordinates>{lon_pouso},{lat_pouso},0</coordinates>
+              </Point>
+            </Placemark>
+            """
+
+            # Estilos visuais do Google Earth
             estilos_kml = """
             <Style id="linhaVermelha"><LineStyle><color>ff0000ff</color><width>4</width></LineStyle></Style>
             <Style id="linhaAzul"><LineStyle><color>ffff0000</color><width>4</width></LineStyle></Style>
             <Style id="linhaAmarela"><LineStyle><color>ff00ffff</color><width>4</width></LineStyle></Style>
+            <Style id="linhaVerde"><LineStyle><color>ff00ff00</color><width>4</width></LineStyle></Style>
             <Style id="iconeAlvo"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-stars.png</href></Icon></IconStyle></Style>
             <Style id="iconePonto"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href></Icon></IconStyle></Style>
-            <Style id="linhaEixo">
-  <LineStyle>
-    <color>ff0000ff</color><width>3</width>
-  </LineStyle>
-</Style>
-
-<Style id="linhaDogLeg">
-  <LineStyle>
-    <color>ffff0000</color><width>3</width>
-  </LineStyle>
-</Style>
-
-<Style id="iconeAlvo">
-  <IconStyle>
-    <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-stars.png</href></Icon>
-  </IconStyle>
-</Style>
-<Style id="iconePonto">
-  <IconStyle>
-    <Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href></Icon>
-  </IconStyle>
-</Style>
             """
             
-            # Elementos Fixos: Alvo e a Reta D (Sempre Vermelha)
+            # Elementos Fixos: Alvo, Reta D (Sempre Vermelha na extensão D) e Linha Verde de Pouso
             kml_elementos = f"""
             <Placemark>
               <name>Alvo</name>
               <styleUrl>#iconeAlvo</styleUrl>
               <Point><coordinates>{lon_alvo},{lat_alvo},0</coordinates></Point>
             </Placemark>
+            
+            {linha_pouso_kml}
 
             <Placemark>
-              <name>Distância D ({d_metros:.0f} m)</name>
+              <name>Distância D (Limite: {d_metros:.0f} m)</name>
               <styleUrl>#linhaVermelha</styleUrl>
               <LineString><extrude>1</extrude><tessellate>1</tessellate>
                 <coordinates>{lon_alvo},{lat_alvo},0 {lon_pl},{lat_pl},0</coordinates>
               </LineString>
             </Placemark>
+            <Placemark>
+              <name>Ponto Limite D</name>
+              <styleUrl>#iconePonto</styleUrl>
+              <Point><coordinates>{lon_pl},{lat_pl},0</coordinates></Point>
+            </Placemark>
             """
 
             if tipo_lanc_dkva == "Lançamento de Nariz":
+                # PS fica exatamente a 300m após o Alvo
+                lat_ps_nariz, lon_ps_nariz = mover_ponto(lat_alvo, lon_alvo, 300.0 / 1000.0, az_vento)
+                
+                st.session_state.ps_lat = lat_ps_nariz
+                st.session_state.ps_lon = lon_ps_nariz
+                st.session_state.ps_origem = "PS DKVA (Nariz - 300m)"
+
                 kml_elementos += f"""
                 <Placemark>
-                  <name>PS (Nariz)</name>
-                  <description>Altura: {A_kft:.1f} kft | Vento: {v_usado:.1f} kt</description>
+                  <name>Inércia Aeronave (300 m)</name>
+                  <styleUrl>#linhaAzul</styleUrl>
+                  <LineString><extrude>1</extrude><tessellate>1</tessellate>
+                    <coordinates>{lon_alvo},{lat_alvo},0 {lon_ps_nariz},{lat_ps_nariz},0</coordinates>
+                  </LineString>
+                </Placemark>
+                <Placemark>
+                  <name>PS (Ponto de Saída)</name>
+                  <description>Altura: {A_kft:.1f} kft | Vento: {v_usado:.1f} kt | Luz verde a 100m do Alvo.</description>
                   <styleUrl>#iconePonto</styleUrl>
-                  <Point><coordinates>{lon_pl},{lat_pl},0</coordinates></Point>
+                  <Point><coordinates>{lon_ps_nariz},{lat_ps_nariz},0</coordinates></Point>
                 </Placemark>
                 """
 
             elif tipo_lanc_dkva == "Lançamento de Cauda":
-                # Primeiro calculamos onde termina o Arrasto (Azul)
                 lat_arrasto, lon_arrasto = mover_ponto(lat_pl, lon_pl, offset_base / 1000.0, az_vento)
-                
-                # Depois, a partir do Arrasto, calculamos onde termina a Dispersão (Amarela)
                 lat_ps_cauda, lon_ps_cauda = mover_ponto(lat_arrasto, lon_arrasto, dispersao_m / 1000.0, az_vento)
+                
+                st.session_state.ps_lat = lat_ps_cauda
+                st.session_state.ps_lon = lon_ps_cauda
+                st.session_state.ps_origem = "PS DKVA (Cauda)"
                 
                 kml_elementos += f"""
                 <Placemark>
@@ -2720,7 +2812,6 @@ with aba_dkva:
 
             # Monta e comprime o KML
             kml_str = f'<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n  <Document>\n    <name>Planejamento DKVA Tático</name>\n    {estilos_kml}\n    {kml_elementos}\n  </Document>\n</kml>'
-
             zip_buffer_dkva = io.BytesIO()
             with zipfile.ZipFile(zip_buffer_dkva, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 zip_file.writestr("planejamento_dkva_tatico.kml", kml_str.encode("utf-8"))
@@ -2920,7 +3011,28 @@ with aba_folder:
             st.write("**Pqdt embarcados:** ")
 
         if st.button("📄 Gerar Folder do Piloto", type="primary"):
-            docx_buffer = gerar_folder_piloto_docx(dados_folder)
+            with st.spinner("🛰️ Acionando satélite e desenhando rota..."):
+                imagem_mapa = None
+                erro_imagem = None
+                
+                # Se o Ponto de Saída já existir, ele tenta baixar a foto
+                if "ps_lat" in st.session_state and "ps_lon" in st.session_state:
+                    imagem_mapa, erro_imagem = obter_imagem_mapa_estatico(
+                        st.session_state.lat, 
+                        st.session_state.lon,
+                        float(st.session_state.ps_lat), 
+                        float(st.session_state.ps_lon),
+                        GOOGLE_MAPS_API_KEY
+                    )
+                
+                # Passa a imagem pro arquivo Word
+                docx_buffer = gerar_folder_piloto_docx(dados_folder, imagem_mapa)
+
+            # Exibe os alertas na tela do aplicativo
+            if erro_imagem:
+                st.warning(f"⚠️ O Word foi gerado SEM a foto do mapa. Motivo: {erro_imagem}")
+            else:
+                st.success("✅ Folder gerado com a imagem de satélite com sucesso!")
 
             st.download_button(
                 label="⬇️ Baixar Folder do Piloto em Word",
@@ -2928,7 +3040,7 @@ with aba_folder:
                 file_name="Folder_do_Piloto.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
-            # =====================================================
+# =====================================================
 # BARRA LATERAL: EXPORTAÇÃO DA MISSÃO (BACKUP)
 # =====================================================
 
@@ -2970,7 +3082,7 @@ def gerar_relatorio_txt():
         f"Vento Médio: {vento} kt",
         f"Direção Ponderada: {dir_pond}°",
         "",
-        "[ 3. PARÂMETROS DE NAVEGAÇÃO CALCULADOS ]",
+        "[ 3. PARÂMETROS DE NAVEGAÇÃO GERAL ]",
         f"Distância D (NM): {dist_nm}",
         f"Constante Horizontal (CteHz): {ctehz} kt",
         f"Constante Vertical (K): {k_val} kft/h",
@@ -2988,8 +3100,37 @@ def gerar_relatorio_txt():
             obs = p.get('Observação', '')
             linhas.append(f"- Ponto {p['ID']} | Dist: {p['Dist (km)']} km | Alt: {p['Alt P Ctle (ft)']} ft | Vento: {p['Vento Médio (kt)']} kt | Obs: {obs}")
 
+    # =====================================================
+    # NOVO BLOCO: PLANEJAMENTO DKVA
+    # =====================================================
     linhas.append("")
-    linhas.append("[ 5. WINDGRAM TEXTUAL UTILIZADO (CÓPIA BRUTA) ]")
+    linhas.append("[ 5. PLANEJAMENTO DKVA (SALTO SOBRE O ALVO) ]")
+    
+    dkva_a = st.session_state.get('dkva_a_kft', 'N/A')
+    tipo_lanc_dkva = st.session_state.get('tipo_lanc_dkva_radio', 'N/A')
+    
+    if dkva_a != 'N/A' and isinstance(vento, (int, float)):
+        d_dkva_m = 25 * vento * dkva_a
+        eixo_nav = (dir_pond + 180) % 360 if isinstance(dir_pond, (int, float)) else 'N/A'
+        
+        linhas.append(f"Constante K: 25")
+        linhas.append(f"Altura de Abertura (A): {dkva_a} kft")
+        linhas.append(f"Distância Calculada (D): {d_dkva_m:.0f} metros")
+        linhas.append(f"Eixo de Navegação (Nariz): {eixo_nav:.0f}°" if isinstance(eixo_nav, (int, float)) else f"Eixo de Navegação: {eixo_nav}")
+        linhas.append(f"Tipo de Lançamento: {tipo_lanc_dkva}")
+        
+        if tipo_lanc_dkva in ["Lançamento de Cauda", "Lançamento Boca do Cone"]:
+            nb = st.session_state.get('nb_dkva', 0)
+            ib = st.session_state.get('ib_dkva', 0.0)
+            ae = st.session_state.get('ae_dkva', 'N/A')
+            linhas.append(f"Aeronave: {ae} | Blocos: {nb} | Intervalo: {ib} s")
+    else:
+        linhas.append("DKVA não preenchido nesta sessão.")
+
+    # =====================================================
+    
+    linhas.append("")
+    linhas.append("[ 6. WINDGRAM TEXTUAL UTILIZADO (CÓPIA BRUTA) ]")
     linhas.append(st.session_state.get("windgram_texto", "Nenhum windgram colado."))
     linhas.append("=====================================================")
 
