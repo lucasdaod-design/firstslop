@@ -1424,7 +1424,8 @@ with aba_planejamento:
 
                     direcao_ponderada = resumo_velame["direcao_ponderada"]
 
-                    azimute_referencia_verdadeiro = direcao_vento_aritmetica
+                    # AQUI ESTÁ A MÁGICA: Agora a base de todo o cálculo magnético é a Ponderada!
+                    azimute_referencia_verdadeiro = direcao_ponderada
 
                     azimute_referencia_magnetico = verdadeiro_para_magnetico(
                         azimute_referencia_verdadeiro,
@@ -1441,27 +1442,28 @@ with aba_planejamento:
                         )
 
                         st.metric(
-                            "Direção média dos ventos",
-                            f"{direcao_vento_aritmetica:.0f}°",
-                            help="Média aritmética simples dos azimutes."
+                            "Direção Ponderada dos Ventos",
+                            f"{direcao_ponderada:.0f}°",
+                            help="Média vetorial ponderada pela força do vento (Referência Principal)."
                         )
 
                     with r2:
                         st.metric(
-                            "Entrada de Nariz",
+                            "Entrada de Nariz (Ref: Média PONDERADA)",
                             f"{azimute_referencia_magnetico:.0f}°"
                         )
 
                         st.metric(
-                            "Entrada de Cauda / Azimute de Navegação",
+                            "Entrada de Cauda (Ref: Média PONDERADA)",
                             f"{contra_azimute(azimute_referencia_magnetico):.0f}°"
                         )
+                        
                     st.write(
-                            f"Referência verdadeira — Média Circular: "
-                            f"**{azimute_referencia_verdadeiro:.0f}°**"
-)
+                            f"Referência verdadeira — Média Circular (Sem peso): "
+                            f"**{direcao_vento_circular:.0f}°**"
+                    )
                     st.write(f"Declinação aplicada: **{declinacao:.2f}°**")
-                    st.write(f"Direção ponderada do vento: **{direcao_ponderada:.0f}°**")
+                    st.write(f"Direção média aritmética dos ventos: **{direcao_vento_aritmetica:.0f}°**")
                     st.write(f"Camadas de velame usadas: **{resumo_velame['qtd']}**")
 
                 else:
