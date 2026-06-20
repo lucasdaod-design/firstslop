@@ -42,7 +42,8 @@ st.set_page_config(
 
 # Mantido para compatibilidade com seu código anterior.
 # Nesta versão o mapa usa ESRI World Imagery para evitar cair no OpenStreetMap.
-GOOGLE_MAPS_API_KEY = "AIzaSyC-ljD1W2lR0hNFp2U-2ItDvla-_lEJMAU"
+# O aplicativo agora puxa a chave do cofre seguro do Streamlit
+GOOGLE_MAPS_API_KEY = st.secrets["GOOGLE_MAPS_API_KEY"]
 ARQUIVO_PERFIS_VELAME = "perfis_velame.json"
 
 
