@@ -2202,12 +2202,62 @@ with aba_camadas:
                     qtd_inferior=dog_leg["qtd_inferior"],
                     qtd_superior=dog_leg["qtd_superior"],
                 )
-            # Ponto final da reta vermelha (Distância D original)
+           # Ponto final da reta vermelha (Distância D original)
             lat_d, lon_d = calcular_coordenada_destino(lat_alvo, lon_alvo, dist_total_km, azimute_vento)
             
+            # =====================================================
+            # CÁLCULO DA DIREÇÃO DE POUSO (2 CAMADAS MAIS BAIXAS)
+            # =====================================================
+            linha_pouso_kml = ""
+            df_velame = st.session_state.get("df_windgram")
+            if df_velame is not None and not df_velame.empty:
+                base_velame = df_velame[df_velame["Fase"] == "Velame aberto"].copy()
+                if not base_velame.empty:
+                    # Ordena do mais baixo para o mais alto e pega os 2 primeiros
+                    df_baixas = base_velame.sort_values("Altitude NOAA ft", ascending=True).head(2)
+                    
+                    dir_b = df_baixas["Direção °"].astype(float).tolist()
+                    vel_b = df_baixas["Velocidade kt"].astype(float).tolist()
+                    
+                    if len(dir_b) > 0:
+                        # Média Ponderada da Direção e Média Aritmética da Velocidade
+                        dir_pouso = media_circular_ponderada(dir_b, vel_b)
+                        if dir_pouso is None:
+                            dir_pouso = sum(dir_b) / len(dir_b) # Fallback de segurança
+                        
+                        vel_pouso = sum(vel_b) / len(vel_b)
+                        
+                        # Calcula a ponta da linha a 0.5 km (500 metros) do alvo
+                        lat_pouso, lon_pouso = calcular_coordenada_destino(lat_alvo, lon_alvo, 0.5, dir_pouso)
+                        
+                        linha_pouso_kml = f"""
+    <Placemark>
+      <name>Eixo de Pouso (500m)</name>
+      <styleUrl>#linhaVerde</styleUrl>
+      <LineString>
+        <extrude>1</extrude>
+        <tessellate>1</tessellate>
+        <coordinates>
+          {lon_alvo},{lat_alvo},0
+          {lon_pouso},{lat_pouso},0
+        </coordinates>
+      </LineString>
+    </Placemark>
+    <Placemark>
+      <name>Provável direção de pouso - {vel_pouso:.1f} kt</name>
+      <description>Direção ponderada: {dir_pouso:.0f}° | Média calculada das {len(dir_b)} camada(s) mais baixa(s) do Windgram</description>
+      <styleUrl>#iconePonto</styleUrl>
+      <Point>
+        <coordinates>{lon_pouso},{lat_pouso},0</coordinates>
+      </Point>
+    </Placemark>
+"""
+
+            # Foi adicionada a "linhaVerde" na tabela de estilos
             estilos_kml = """
             <Style id="linhaVermelha"><LineStyle><color>ff0000ff</color><width>4</width></LineStyle></Style>
             <Style id="linhaAmarela"><LineStyle><color>ff00ffff</color><width>4</width></LineStyle></Style>
+            <Style id="linhaVerde"><LineStyle><color>ff00ff00</color><width>4</width></LineStyle></Style>
             <Style id="iconeAlvo"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-stars.png</href></Icon></IconStyle></Style>
             <Style id="iconePonto"><IconStyle><Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href></Icon></IconStyle></Style>
             """
@@ -2225,6 +2275,8 @@ with aba_camadas:
         <coordinates>{lon_alvo},{lat_alvo},0</coordinates>
       </Point>
     </Placemark>
+    
+    {linha_pouso_kml}
 
     <Placemark>
       <name>Distância D ({(dist_total_km * 1000):.0f} m)</name>
