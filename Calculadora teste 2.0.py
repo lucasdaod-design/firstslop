@@ -1319,9 +1319,16 @@ with aba_planejamento:
                 "https://www.ready.noaa.gov/READYcmet.php"
             )
 
-    st.write("Coordenadas para copiar no NOAA:")
-    st.code(f"{st.session_state.lat:.6f}, {st.session_state.lon:.6f}")
-
+    st.write("Coordenadas para copiar no NOAA (copie uma por vez):")
+    col_copy1, col_copy2 = st.columns(2)
+    
+    with col_copy1:
+        st.caption("Latitude:")
+        st.code(f"{st.session_state.lat:.6f}")
+        
+    with col_copy2:
+        st.caption("Longitude:")
+        st.code(f"{st.session_state.lon:.6f}")
     with st.expander("Instruções rápidas"):
                 st.markdown(
                     """
