@@ -55,21 +55,21 @@ def registrar_log_missao(acao):
         if not webhook_url:
             return
         
-        # Puxa as coordenadas atuais do painel sem interromper o usuário
+        # O uso do "f-string" com uma aspa simples (') no início das coordenadas 
+        # força o Google Sheets a blindar o número como texto, preservando o ponto decimal!
         payload = {
             "acao": acao,
-            "lat_alvo": str(st.session_state.get("lat", "")),
-            "lon_alvo": str(st.session_state.get("lon", "")),
-            "lat_aero": str(st.session_state.get("lat_aerodromo_partida", "")),
-            "lon_aero": str(st.session_state.get("lon_aerodromo_partida", ""))
+            "localidade": str(st.session_state.get("localidade_alvo", "-")),
+            "lat_alvo": f"'{st.session_state.get('lat', '-')}",
+            "lon_alvo": f"'{st.session_state.get('lon', '-')}",
+            "lat_aero": f"'{st.session_state.get('lat_aerodromo_partida', '-')}",
+            "lon_aero": f"'{st.session_state.get('lon_aerodromo_partida', '-')}"
         }
         
-        # Dispara os dados em segundo plano (O app não trava esperando o envio!)
         import threading
         threading.Thread(target=requests.post, args=(webhook_url,), kwargs={"data": payload}).start()
     except Exception:
-        pass # Se estiver sem internet, ele engole o erro e o app continua funcionando
-
+        pass
 
 # =====================================================
 # TABELA NOAA READY — PRESSÃO / ALTITUDE
