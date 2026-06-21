@@ -1028,7 +1028,7 @@ def gerar_folder_piloto_docx(dados):
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
     linhas = [
-        (f"Coordenada ZL: {dados['coord_zl']}", f"Altitude da ZL: {dados['altitude_zl_ft']}"),
+        (f"ZL / Local: {dados.get('localidade', '-')}\nCoord: {dados['coord_zl']}", f"Altitude da ZL: {dados['altitude_zl_ft']}"),
         (f"Eixo de lançamento: {dados['eixo_lancamento']}", f"Altitude Adrm: {dados['altitude_aerodromo_ft']}"),
         (f"Eixo de navegação do saltador: {dados['eixo_navegacao']}", f"Altitude PS: {dados['altitude_ps_ft']} / DAA: {dados['daa_qfe']}"),
         (f"Alt comandamento: {dados['altura_comandamento_ft']}", f"Ajuste de altímetro: {dados['ajuste_altimetro']}"),
@@ -1149,8 +1149,16 @@ with aba_planejamento:
     with col_esq:
         st.subheader("1. Alvo")
 
+        # NOVO: Caixa para digitar o nome da ZL
+        localidade_alvo = st.text_input(
+            "Localidade / Nome da ZL", 
+            value=st.session_state.get("localidade_alvo", ""),
+            placeholder="Ex: ZL Boi Preto / Anápolis-GO"
+        )
+        st.session_state.localidade_alvo = localidade_alvo
+
         busca = st.text_input(
-            "Pesquisar localidade",
+            "Pesquisar coordenadas por cidade",
             placeholder="Ex: Campo Grande, Goiânia, Anápolis, Fazenda..."
         )
 
@@ -1162,6 +1170,10 @@ with aba_planejamento:
                     st.session_state.lon = float(resultado["lon"])
                     st.session_state.centro_mapa = [st.session_state.lat, st.session_state.lon]
                     st.session_state.mapa_planejamento_rev += 1
+                    
+                    # MÁGICA: Preenche o nome da ZL sozinho se a pessoa usar a busca
+                    st.session_state.localidade_alvo = resultado["nome"]
+                    
                     st.success(resultado["nome"])
                     st.rerun()
                 else:
@@ -2952,6 +2964,7 @@ with aba_folder:
             return f"{valor:.0f}".zfill(4)
 
         dados_folder = {
+            "localidade": st.session_state.get("localidade_alvo", ""),
             "coord_zl": coord_zl,
             "eixo_lancamento": f"{eixo_lancamento:.0f}°",
             "eixo_navegacao": f"{eixo_navegacao:.0f}°",
@@ -2967,14 +2980,13 @@ with aba_folder:
                 if ajuste_altimetro_ft is not None
                 else ""
             ),
-        
-                    "lat_4_fora": lat_4_fora,
+            "lat_4_fora": lat_4_fora,
             "lon_4_fora": lon_4_fora,
             "lat_1_fora": lat_1_fora,
             "lon_1_fora": lon_1_fora,
             "ps_lat_dm": ps_lat_dm,
             "ps_lon_dm": ps_lon_dm,
-}
+        }
         st.markdown("### Prévia dos dados")
 
         c1, c2 = st.columns(2)
@@ -3045,6 +3057,7 @@ def gerar_relatorio_txt():
         f"Data da exportação: {agora}",
         "",
         "[ 1. DADOS DO ALVO ]",
+        f"Localidade / ZL: {st.session_state.get('localidade_alvo', 'N/A')}",
         f"Latitude:  {lat}",
         f"Longitude: {lon}",
         f"Altitude ZL (ft): {alt}",
