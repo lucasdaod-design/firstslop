@@ -46,6 +46,30 @@ st.set_page_config(
 GOOGLE_MAPS_API_KEY = st.secrets["GOOGLE_MAPS_API_KEY"]
 ARQUIVO_PERFIS_VELAME = "perfis_velame.json"
 
+# =====================================================
+# CAIXA PRETA: RADAR DE TRÁFEGO E MISSÕES
+# =====================================================
+def registrar_log_missao(acao):
+    try:
+        webhook_url = st.secrets.get("WEBHOOK_GOOGLE_SHEETS")
+        if not webhook_url:
+            return
+        
+        # Puxa as coordenadas atuais do painel sem interromper o usuário
+        payload = {
+            "acao": acao,
+            "lat_alvo": str(st.session_state.get("lat", "")),
+            "lon_alvo": str(st.session_state.get("lon", "")),
+            "lat_aero": str(st.session_state.get("lat_aerodromo_partida", "")),
+            "lon_aero": str(st.session_state.get("lon_aerodromo_partida", ""))
+        }
+        
+        # Dispara os dados em segundo plano (O app não trava esperando o envio!)
+        import threading
+        threading.Thread(target=requests.post, args=(webhook_url,), kwargs={"data": payload}).start()
+    except Exception:
+        pass # Se estiver sem internet, ele engole o erro e o app continua funcionando
+
 
 # =====================================================
 # TABELA NOAA READY — PRESSÃO / ALTITUDE
@@ -2145,6 +2169,7 @@ with aba_camadas:
             st.info(f"📍 Uma reta amarela de {adicional_cauda_m:.0f}m será adicionada ao final da distância D. O PS será deslocado para o fim desta reta.")
 
         if st.button("Gerar Arquivo KMZ", type="primary", key="btn_kmz_geral"):
+            registrar_log_missao("Gerou KMZ Velame Aberto") # <--- RASTREADOR
             import math
             
                         # Dados base
@@ -2534,6 +2559,7 @@ with aba_dkva:
                 st.info(f"📏 A reta perpendicular de dispersão terá **{dispersao_m:.0f} metros** de comprimento total.")
 
         if st.button("🗺️ Gerar Arquivo KMZ do DKVA", type="primary"):
+            registrar_log_missao("Gerou KMZ Salto DKVA") # <--- RASTREADOR
             import math
 
             lat_alvo = st.session_state.lat
@@ -2973,8 +2999,8 @@ with aba_folder:
         gerar_acionado = st.button("📄 Gerar Folder do Piloto", type="primary")
 
         if gerar_acionado:
-            with st.spinner("📄 Gerando arquivo Word..."):
-                # Gera o arquivo em memória instantaneamente (sem satélite)
+            registrar_log_missao("Gerou Folder do Piloto (Word)") # <--- RASTREADOR
+            with st.spinner("📄 Gerando arquivo Word..."):                # Gera o arquivo em memória instantaneamente (sem satélite)
                 st.session_state.docx_pronto = gerar_folder_piloto_docx(dados_folder)
             st.success("✅ Folder gerado com sucesso!")
 
