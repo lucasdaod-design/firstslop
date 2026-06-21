@@ -976,33 +976,7 @@ def set_cell_text(cell, text, bold=False, size=12):
     run.font.size = Pt(size)
     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
 
-def obter_imagem_mapa_estatico(lat_alvo, lon_alvo, lat_ps, lon_ps, api_key):
-    if not api_key:
-        return None, "Chave da API ausente no arquivo secrets."
-    
-    # Monta a URL que pede a foto para o satélite do Google
-    url = (
-        f"https://maps.googleapis.com/maps/api/staticmap?"
-        f"size=640x360&maptype=hybrid"
-        f"&markers=color:red|label:A|{lat_alvo},{lon_alvo}"
-        f"&markers=color:blue|label:P|{lat_ps},{lon_ps}"
-        f"&path=color:0xff0000ff|weight:4|{lat_alvo},{lon_alvo}|{lat_ps},{lon_ps}"
-        f"&key={api_key}"
-    )
-    
-    try:
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            import io
-            return io.BytesIO(r.content), None
-        else:
-            # Se o Google negar, ele vai cuspir o erro exato
-            return None, f"Acesso Negado (Erro {r.status_code}). Verifique a API no Google Cloud."
-    except Exception as e:
-        return None, str(e)
-
-def gerar_folder_piloto_docx(dados, imagem_mapa=None):
-    from docx.shared import Inches
+def gerar_folder_piloto_docx(dados):
     doc = Document()
 
     section = doc.sections[0]
@@ -1017,47 +991,30 @@ def gerar_folder_piloto_docx(dados, imagem_mapa=None):
     run.bold = True
     run.font.size = Pt(14)
 
-    # --- NOVO: COLA A IMAGEM DO SATÉLITE ---
-    if imagem_mapa:
-        p_img = doc.add_paragraph()
-        p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run_img = p_img.add_run()
-        run_img.add_picture(imagem_mapa, width=Inches(6.0)) # Tamanho perfeito para a folha retrato
-    else:
-        doc.add_paragraph("")
+    # Espaço reservado para o usuário colar o mapa manualmente
+    doc.add_paragraph("")
+    p_aviso = doc.add_paragraph()
+    p_aviso.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_aviso = p_aviso.add_run("[ Cole o print do Google Earth aqui ]")
+    run_aviso.font.italic = True
+    doc.add_paragraph("")
 
     table = doc.add_table(rows=5, cols=2)
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
     linhas = [
-        (
-            f"Coordenada ZL: {dados['coord_zl']}",
-            f"Altitude da ZL: {dados['altitude_zl_ft']}"
-        ),
-        (
-            f"Eixo de lançamento: {dados['eixo_lancamento']}",
-            f"Altitude Adrm: {dados['altitude_aerodromo_ft']}"
-        ),
-        (
-            f"Eixo de navegação do saltador: {dados['eixo_navegacao']}",
-            f"Altitude PS: {dados['altitude_ps_ft']} / DAA: {dados['daa_qfe']}"
-        ),
-        (
-            f"Alt comandamento: {dados['altura_comandamento_ft']}",
-            f"Ajuste de altímetro: {dados['ajuste_altimetro']}"
-        ),
-        (
-            f"Velocidade da Anv: {dados['velocidade_anv']}",
-            "Pqdt embarcados:"
-        ),
+        (f"Coordenada ZL: {dados['coord_zl']}", f"Altitude da ZL: {dados['altitude_zl_ft']}"),
+        (f"Eixo de lançamento: {dados['eixo_lancamento']}", f"Altitude Adrm: {dados['altitude_aerodromo_ft']}"),
+        (f"Eixo de navegação do saltador: {dados['eixo_navegacao']}", f"Altitude PS: {dados['altitude_ps_ft']} / DAA: {dados['daa_qfe']}"),
+        (f"Alt comandamento: {dados['altura_comandamento_ft']}", f"Ajuste de altímetro: {dados['ajuste_altimetro']}"),
+        (f"Velocidade da Anv: {dados['velocidade_anv']}", "Pqdt embarcados:")
     ]
 
     for i, linha in enumerate(linhas):
         for j, texto in enumerate(linha):
             cell = table.cell(i, j)
             set_cell_text(cell, texto, bold=False, size=12)
-
             if i in [0, 2]:
                 set_cell_shading(cell, "D9D9D9")
         doc.add_paragraph("")
@@ -1067,52 +1024,27 @@ def gerar_folder_piloto_docx(dados, imagem_mapa=None):
     tabela_ref.alignment = WD_TABLE_ALIGNMENT.CENTER
 
     cores_colunas = ["E6332A", "FFFF66", "63B35D"]
-
-    cabecalhos = [
-        "4' FORA",
-        "1' FORA",
-        "PONTO DE SAÍDA - PS"
-    ]
-
+    cabecalhos = ["4' FORA", "1' FORA", "PONTO DE SAÍDA - PS"]
+    
     linhas_ref = [
         cabecalhos,
-        [
-            f"Latitude: {dados.get('lat_4_fora', '-')}",
-            f"Latitude: {dados.get('lat_1_fora', '')}",
-            f"Latitude: {dados.get('ps_lat_dm', '')}",
-        ],
-        [
-            f"Longitude: {dados.get('lon_4_fora', '-')}",
-            f"Longitude: {dados.get('lon_1_fora', '')}",
-            f"Longitude: {dados.get('ps_lon_dm', '')}",
-        ],
-        [
-            "LUZ VERMELHA",
-            "REPORTAR ANV NA FINAL",
-            "LUZ VERDE APÓS O N/A ROTA OU SOBRE O PS",
-        ],
+        [f"Latitude: {dados.get('lat_4_fora', '-')}", f"Latitude: {dados.get('lat_1_fora', '')}", f"Latitude: {dados.get('ps_lat_dm', '')}"],
+        [f"Longitude: {dados.get('lon_4_fora', '-')}", f"Longitude: {dados.get('lon_1_fora', '')}", f"Longitude: {dados.get('ps_lon_dm', '')}"],
+        ["LUZ VERMELHA", "REPORTAR ANV NA FINAL", "LUZ VERDE APÓS O N/A ROTA OU SOBRE O PS"]
     ]
 
     for i, linha in enumerate(linhas_ref):
         for j, texto in enumerate(linha):
             cell = tabela_ref.cell(i, j)
-
-            set_cell_text(
-                cell,
-                texto,
-                bold=(i == 0 or i == 3),
-                size=12
-            )
-
+            set_cell_text(cell, texto, bold=(i == 0 or i == 3), size=12)
             set_cell_shading(cell, cores_colunas[j])
-
             for paragrafo in cell.paragraphs:
                 if i == 0 or i == 3:
                     paragrafo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
     buffer = io.BytesIO()
     doc.save(buffer)
     buffer.seek(0)
-
     return buffer
 # =====================================================
 # MAPA AUXILIAR
@@ -2198,6 +2130,14 @@ with aba_camadas:
             key="tipo_lanc_geral"
         )
         
+        # Puxa a velocidade do avião para traçar a linha amarela do 1' Fora no KMZ
+        velocidade_anv_kmz = st.number_input(
+            "Velocidade da Aeronave (m/s) - Usado para calcular o 1' Fora", 
+            value=st.session_state.get("folder_velocidade_anv", 70.0), 
+            step=5.0, 
+            key="kmz_velocidade_anv"
+        )
+        
         adicional_cauda_m = 0.0
         if tipo_lancamento == "Lançamento de Cauda":
             st.markdown("#### Parâmetros de Cauda")
@@ -2337,26 +2277,15 @@ with aba_camadas:
             # Se for nariz, o PS é no ponto D
             lat_ps_final = lat_d
             lon_ps_final = lon_d
-            st.session_state.ps_origem = "PS Final - Lançamento de Nariz"
+            st.session_state.ps_origem = "PONTO DE SAÍDA - Nariz"
             
             if tipo_lancamento == "Lançamento de Cauda":
-                # Calcula o novo ponto final estendido (Amarelo)
                 lat_ps_final, lon_ps_final = calcular_coordenada_destino(lat_d, lon_d, adicional_cauda_m / 1000.0, azimute_vento)
-                st.session_state.ps_origem = f"PS Final - {tipo_lancamento}"
-                
-            # AGORA SIM: Salva na memória para QUALQUER um dos casos (Nariz ou Cauda)
-            st.session_state.ps_lat = lat_ps_final
-            st.session_state.ps_lon = lon_ps_final
-
-            if dog_leg:
-                st.info(
-        f"Dog Leg detectado: quebra de {dog_leg['diferenca_graus']:.0f}°. "
-        f"KMZ será exportado com 1 reta vermelha + 2 retas azuis."
-    )
-            kml_str += f"""
-            
-                
-                
+                st.session_state.ps_origem = "PONTO DE SAÍDA - Cauda"
+                if dog_leg:
+                    st.info(f"Dog Leg detectado. Exportando KMZ com a quebra.")
+                    
+                kml_str += f"""
     <Placemark>
       <name>Cauda / Arrasto ({adicional_cauda_m:.0f} m)</name>
       <styleUrl>#linhaAmarela</styleUrl>
@@ -2371,13 +2300,46 @@ with aba_camadas:
     </Placemark>
 """
 
+            st.session_state.ps_lat = lat_ps_final
+            st.session_state.ps_lon = lon_ps_final
+
+            # === MÁGICA: CÁLCULO E TRAÇADO DO 1' FORA ===
+            dist_1_fora_km = (velocidade_anv_kmz * 60) / 1000.0
+            if tipo_lancamento == "Lançamento de Nariz":
+                az_1_fora = contra_azimute(azimute_vento) # Correção: volta a favor do vento
+            else:
+                az_1_fora = azimute_vento # Correção: volta contra o vento                
+            lat_1_fora, lon_1_fora = calcular_coordenada_destino(lat_ps_final, lon_ps_final, dist_1_fora_km, az_1_fora)
+
             kml_str += f"""
     <Placemark>
-      <name>PS Final</name>
-      <description>Ponto de Saída / Início da Navegação</description>
+      <name>PONTO DE SAÍDA - PS</name>
+      <description>Início da Navegação</description>
       <styleUrl>#iconePonto</styleUrl>
       <Point>
         <coordinates>{lon_ps_final},{lat_ps_final},0</coordinates>
+      </Point>
+    </Placemark>
+    
+    <Placemark>
+      <name>Trajeto 1' FORA</name>
+      <styleUrl>#linhaAmarela</styleUrl>
+      <LineString>
+        <extrude>1</extrude>
+        <tessellate>1</tessellate>
+        <coordinates>
+          {lon_ps_final},{lat_ps_final},0
+          {lon_1_fora},{lat_1_fora},0
+        </coordinates>
+      </LineString>
+    </Placemark>
+
+    <Placemark>
+      <name>1' FORA</name>
+      <description>Aeronave a 1 minuto do Ponto de Saída</description>
+      <styleUrl>#iconePonto</styleUrl>
+      <Point>
+        <coordinates>{lon_1_fora},{lat_1_fora},0</coordinates>
       </Point>
     </Placemark>
 """
@@ -2721,12 +2683,13 @@ with aba_dkva:
             """
 
             if tipo_lanc_dkva == "Lançamento de Nariz":
-                # PS fica exatamente a 300m após o Alvo
-                lat_ps_nariz, lon_ps_nariz = mover_ponto(lat_alvo, lon_alvo, 300.0 / 1000.0, az_vento)
+                # O arrasto de 300m vai do alvo para TRÁS (Contra azimute da direção de D)
+                az_contra_d = (az_vento + 180) % 360
+                lat_ps_nariz, lon_ps_nariz = mover_ponto(lat_alvo, lon_alvo, 300.0 / 1000.0, az_contra_d)
                 
                 st.session_state.ps_lat = lat_ps_nariz
                 st.session_state.ps_lon = lon_ps_nariz
-                st.session_state.ps_origem = "PS DKVA (Nariz - 300m)"
+                st.session_state.ps_origem = "PS DKVA (Nariz - 300m Contra D)"
 
                 kml_elementos += f"""
                 <Placemark>
@@ -2738,7 +2701,7 @@ with aba_dkva:
                 </Placemark>
                 <Placemark>
                   <name>PS (Ponto de Saída)</name>
-                  <description>Altura: {A_kft:.1f} kft | Vento: {v_usado:.1f} kt | Luz verde a 100m do Alvo.</description>
+                  <description>Altura: {A_kft:.1f} kft | Vento: {v_usado:.1f} kt | Luz verde a 300m do Alvo (Contra Azimute).</description>
                   <styleUrl>#iconePonto</styleUrl>
                   <Point><coordinates>{lon_ps_nariz},{lat_ps_nariz},0</coordinates></Point>
                 </Placemark>
@@ -2860,60 +2823,57 @@ with aba_folder:
         )
         st.markdown("### Referências 4' fora / 1' fora / PS")
 
+        # --- CÁLCULO DO 1' FORA AUTOMÁTICO COM BLINDAGEM DE SESSÃO ---
+        lat_1_fora_calc, lon_1_fora_calc = None, None
+        
+        if "ps_lat" in st.session_state and "ps_lon" in st.session_state:
+            az_vento_verdadeiro = float(st.session_state.get("direcao_vento_verdadeira_kmz", 0.0))
+            
+            # Avião voa do 1' fora para o PS. Retrocedemos do PS para achar o 1' fora.
+            if tipo_lancamento_folder == "Lançamento de Nariz":
+                az_para_1_fora = contra_azimute(az_vento_verdadeiro) # Correção aplicada
+            else:
+                az_para_1_fora = az_vento_verdadeiro # Correção aplicada
+                
+            lat_1_fora_calc, lon_1_fora_calc = calcular_coordenada_destino(
+                float(st.session_state.ps_lat), 
+                float(st.session_state.ps_lon), 
+                distancia_teorica_1_fora_m / 1000.0, 
+                az_para_1_fora
+            )
+            
+            # FORÇA a atualização na memória do Streamlit para preencher as caixas automaticamente
+            st.session_state["folder_lat_1_fora"] = formatar_lat_dm(lat_1_fora_calc)
+            st.session_state["folder_lon_1_fora"] = formatar_lon_dm(lon_1_fora_calc)
+        # -------------------------------------------------------------
+
         ref1, ref2, ref3 = st.columns(3)
 
         with ref1:
             st.markdown("#### 4' FORA")
-            lat_4_fora = st.text_input(
-                "Latitude 4' fora",
-                value="-",
-                key="folder_lat_4_fora"
-            )
-            lon_4_fora = st.text_input(
-                "Longitude 4' fora",
-                value="-",
-                key="folder_lon_4_fora"
-            )
+            lat_4_fora = st.text_input("Latitude 4' fora", value="-", key="folder_lat_4_fora")
+            lon_4_fora = st.text_input("Longitude 4' fora", value="-", key="folder_lon_4_fora")
 
         with ref2:
             st.markdown("#### 1' FORA")
+            st.info(f"Distância teórica: {distancia_teorica_1_fora_m:,.0f} m".replace(",", "."))
+            
+            # Como forçamos a memória ali em cima, elas vão carregar preenchidas sozinhas!
+            lat_1_fora = st.text_input("Latitude 1' fora", key="folder_lat_1_fora")
+            lon_1_fora = st.text_input("Longitude 1' fora", key="folder_lon_1_fora")
 
-            st.info(
-                f"Distância teórica: "
-                f"{distancia_teorica_1_fora_m:,.0f} m".replace(",", ".")
-            )
-
-            lat_1_fora = st.text_input(
-                "Latitude 1' fora",
-                value="",
-                placeholder="Ex: 20° 33.998'S",
-                key="folder_lat_1_fora"
-            )
-
-            lon_1_fora = st.text_input(
-                "Longitude 1' fora",
-                value="",
-                placeholder="Ex: 55° 1.541'O",
-                key="folder_lon_1_fora"
-            )
         with ref3:
             st.markdown("#### PONTO DE SAÍDA - PS")
-
             if "ps_lat" in st.session_state and "ps_lon" in st.session_state:
                 ps_lat_dm = formatar_lat_dm(float(st.session_state.ps_lat))
                 ps_lon_dm = formatar_lon_dm(float(st.session_state.ps_lon))
-
                 st.success("PS carregado automaticamente.")
                 st.write(f"Latitude: **{ps_lat_dm}**")
                 st.write(f"Longitude: **{ps_lon_dm}**")
-
             else:
                 ps_lat_dm = ""
                 ps_lon_dm = ""
-
-                st.warning(
-                    "PS ainda não registrado. Gere o KMZ ou registre o PS antes de gerar o folder completo."
-                )
+                st.warning("PS ainda não registrado. Gere o KMZ ou registre o PS antes.")
         declinacao_ref = float(
             st.session_state.get(
                 "declinacao_usada",
@@ -3010,35 +2970,21 @@ with aba_folder:
             st.write(f"**Ajuste de altímetro:** {dados_folder['ajuste_altimetro']}")
             st.write("**Pqdt embarcados:** ")
 
-        if st.button("📄 Gerar Folder do Piloto", type="primary"):
-            with st.spinner("🛰️ Acionando satélite e desenhando rota..."):
-                imagem_mapa = None
-                erro_imagem = None
-                
-                # Se o Ponto de Saída já existir, ele tenta baixar a foto
-                if "ps_lat" in st.session_state and "ps_lon" in st.session_state:
-                    imagem_mapa, erro_imagem = obter_imagem_mapa_estatico(
-                        st.session_state.lat, 
-                        st.session_state.lon,
-                        float(st.session_state.ps_lat), 
-                        float(st.session_state.ps_lon),
-                        GOOGLE_MAPS_API_KEY
-                    )
-                
-                # Passa a imagem pro arquivo Word
-                docx_buffer = gerar_folder_piloto_docx(dados_folder, imagem_mapa)
+        gerar_acionado = st.button("📄 Gerar Folder do Piloto", type="primary")
 
-            # Exibe os alertas na tela do aplicativo
-            if erro_imagem:
-                st.warning(f"⚠️ O Word foi gerado SEM a foto do mapa. Motivo: {erro_imagem}")
-            else:
-                st.success("✅ Folder gerado com a imagem de satélite com sucesso!")
+        if gerar_acionado:
+            with st.spinner("📄 Gerando arquivo Word..."):
+                # Gera o arquivo em memória instantaneamente (sem satélite)
+                st.session_state.docx_pronto = gerar_folder_piloto_docx(dados_folder)
+            st.success("✅ Folder gerado com sucesso!")
 
+        if "docx_pronto" in st.session_state:
             st.download_button(
                 label="⬇️ Baixar Folder do Piloto em Word",
-                data=docx_buffer,
+                data=st.session_state.docx_pronto,
                 file_name="Folder_do_Piloto.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="btn_download_folder_final"
             )
 # =====================================================
 # BARRA LATERAL: EXPORTAÇÃO DA MISSÃO (BACKUP)
