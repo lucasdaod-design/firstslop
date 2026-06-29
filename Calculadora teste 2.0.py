@@ -2178,8 +2178,8 @@ with aba_camadas:
             key="tipo_lanc_geral"
         )
         
-# Puxa a velocidade do avião para traçar a linha amarela do 1' Fora no KMZ
-        st.markdown("#### Parâmetros da Aeronave (Para cálculo do 1' Fora)")
+# Parâmetros de Lançamento integrados (Aeronave, Inércia e Dispersão)
+        st.markdown("#### Parâmetros da Aeronave e Dispersão")
         c_anv1, c_anv2 = st.columns(2)
         with c_anv1:
             aeronave_kmz = st.selectbox(
@@ -2190,21 +2190,33 @@ with aba_camadas:
         with c_anv2:
             if aeronave_kmz == "C-105 Amazonas / KC-390":
                 velocidade_anv_kmz = 70.0
+                offset_inercia_kmz = 300.0
                 st.number_input("Velocidade (m/s)", value=70.0, disabled=True, key="num_aero_kmz1")
             elif aeronave_kmz == "C-95 Bandeirante":
                 velocidade_anv_kmz = 60.0
+                offset_inercia_kmz = 150.0
                 st.number_input("Velocidade (m/s)", value=60.0, disabled=True, key="num_aero_kmz2")
             elif aeronave_kmz == "C-98 Caravan":
                 velocidade_anv_kmz = 45.0
+                offset_inercia_kmz = 150.0
                 st.number_input("Velocidade (m/s)", value=45.0, disabled=True, key="num_aero_kmz3")
             else:
                 velocidade_anv_kmz = st.number_input("Velocidade (m/s)", value=70.0, step=1.0, key="num_aero_kmz4")
-        
-        adicional_cauda_m = 0.0
-        if tipo_lancamento == "Lançamento de Cauda":
-            st.markdown("#### Parâmetros de Cauda")
-            adicional_cauda_m = st.number_input("Extensão da Cauda (metros)", min_value=0.0, value=300.0, step=50.0, key="ext_cauda_geral")
-            st.info(f"📍 Uma reta amarela de {adicional_cauda_m:.0f}m será adicionada ao final da distância D. O PS será deslocado para o fim desta reta.")
+                offset_inercia_kmz = 300.0
+
+        c_disp1, c_disp2 = st.columns(2)
+        with c_disp1:
+            num_blocos_kmz = st.number_input("Número de Blocos", min_value=1, value=1, step=1, key="nb_kmz_geral")
+        with c_disp2:
+            int_blocos_kmz = st.number_input("Intervalo (s)", min_value=0.0, value=1.0, step=0.5, key="ib_kmz_geral")
+
+        dispersao_kmz_m = num_blocos_kmz * int_blocos_kmz * velocidade_anv_kmz
+        deslocamento_total_m = offset_inercia_kmz + dispersao_kmz_m
+
+        if tipo_lancamento == "Lançamento de Nariz":
+            st.info(f"📍 O PS será recuado **{deslocamento_total_m:.0f} metros** a partir do Ponto D (Inércia: {offset_inercia_kmz}m + Dispersão: {dispersao_kmz_m:.0f}m).")
+        elif tipo_lancamento == "Lançamento de Cauda":
+            st.info(f"📍 O PS avançará **{deslocamento_total_m:.0f} metros** além do Ponto D (Inércia: {offset_inercia_kmz}m + Dispersão: {dispersao_kmz_m:.0f}m).")
 
         if st.button("Gerar Arquivo KMZ", type="primary", key="btn_kmz_geral"):
             registrar_log_missao("Gerou KMZ Velame Aberto") # <--- RASTREADOR
@@ -2337,20 +2349,37 @@ with aba_camadas:
     </Placemark>
 """
             
-            # Se for nariz, o PS é no ponto D
-            lat_ps_final = lat_d
-            lon_ps_final = lon_d
-            st.session_state.ps_origem = "PONTO DE SAÍDA - Nariz"
-            
-            if tipo_lancamento == "Lançamento de Cauda":
-                lat_ps_final, lon_ps_final = calcular_coordenada_destino(lat_d, lon_d, adicional_cauda_m / 1000.0, azimute_vento)
+           # O deslocamento é aplicado ao longo do eixo do vento para compensar inércia e dispersão
+            lat_ps_final, lon_ps_final = calcular_coordenada_destino(
+                lat_d, lon_d, deslocamento_total_m / 1000.0, azimute_vento
+            )
+
+            if tipo_lancamento == "Lançamento de Nariz":
+                st.session_state.ps_origem = "PONTO DE SAÍDA - Nariz (Compensado)"
+                
+                kml_str += f"""
+    <Placemark>
+      <name>Inércia + Dispersão Nariz ({deslocamento_total_m:.0f} m)</name>
+      <styleUrl>#linhaAzul</styleUrl>
+      <LineString>
+        <extrude>1</extrude>
+        <tessellate>1</tessellate>
+        <coordinates>
+          {lon_d},{lat_d},0
+          {lon_ps_final},{lat_ps_final},0
+        </coordinates>
+      </LineString>
+    </Placemark>
+"""
+
+            elif tipo_lancamento == "Lançamento de Cauda":
                 st.session_state.ps_origem = "PONTO DE SAÍDA - Cauda"
                 if dog_leg:
                     st.info(f"Dog Leg detectado. Exportando KMZ com a quebra.")
                     
                 kml_str += f"""
     <Placemark>
-      <name>Cauda / Arrasto ({adicional_cauda_m:.0f} m)</name>
+      <name>Inércia + Dispersão Cauda ({deslocamento_total_m:.0f} m)</name>
       <styleUrl>#linhaAmarela</styleUrl>
       <LineString>
         <extrude>1</extrude>
