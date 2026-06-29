@@ -2612,10 +2612,8 @@ with aba_dkva:
                 offset_base = dic_aero_dkva[aero_esc][1]
 
             dispersao_m = num_blocos * int_blocos * vel_aeronave
-
             if tipo_lanc_dkva == "Lançamento de Cauda":
-                deslocamento_total = offset_base + dispersao_m
-                st.info(f"📍 O Ponto de Saída será estendido em **{deslocamento_total:.0f} metros** na linha de vento (Offset de segurança da aeronave: {offset_base}m + Dispersão: {dispersao_m:.0f}m).")
+                st.info("📍 O PS será **cravado no limite da Distância D**. (Arrasto e dispersão são desconsiderados no salto de cauda).")
             elif tipo_lanc_dkva == "Lançamento Boca do Cone":
                 st.info(f"📏 A reta perpendicular de dispersão terá **{dispersao_m:.0f} metros** de comprimento total.")
 
@@ -2795,31 +2793,18 @@ with aba_dkva:
                 """
 
             elif tipo_lanc_dkva == "Lançamento de Cauda":
-                lat_arrasto, lon_arrasto = mover_ponto(lat_pl, lon_pl, offset_base / 1000.0, az_vento)
-                lat_ps_cauda, lon_ps_cauda = mover_ponto(lat_arrasto, lon_arrasto, dispersao_m / 1000.0, az_vento)
+                # Dispersão e Inércia irrelevantes no Lançamento de Cauda: PS fica cravado no limite D.
+                lat_ps_cauda = lat_pl
+                lon_ps_cauda = lon_pl
                 
                 st.session_state.ps_lat = lat_ps_cauda
                 st.session_state.ps_lon = lon_ps_cauda
-                st.session_state.ps_origem = "PS DKVA (Cauda)"
+                st.session_state.ps_origem = "PS DKVA (Cauda - Cravado no D)"
                 
                 kml_elementos += f"""
                 <Placemark>
-                  <name>Arrasto Aeronave ({offset_base:.0f} m)</name>
-                  <styleUrl>#linhaAzul</styleUrl>
-                  <LineString><extrude>1</extrude><tessellate>1</tessellate>
-                    <coordinates>{lon_pl},{lat_pl},0 {lon_arrasto},{lat_arrasto},0</coordinates>
-                  </LineString>
-                </Placemark>
-                <Placemark>
-                  <name>Dispersão ({dispersao_m:.0f} m)</name>
-                  <styleUrl>#linhaAmarela</styleUrl>
-                  <LineString><extrude>1</extrude><tessellate>1</tessellate>
-                    <coordinates>{lon_arrasto},{lat_arrasto},0 {lon_ps_cauda},{lat_ps_cauda},0</coordinates>
-                  </LineString>
-                </Placemark>
-                <Placemark>
-                  <name>PS Final (Cauda)</name>
-                  <description>Offset Aeronave: {offset_base}m | Dispersão: {dispersao_m:.0f}m</description>
+                  <name>PS Final (Cauda - Cravado no D)</name>
+                  <description>Arrasto e dispersão desconsiderados.</description>
                   <styleUrl>#iconePonto</styleUrl>
                   <Point><coordinates>{lon_ps_cauda},{lat_ps_cauda},0</coordinates></Point>
                 </Placemark>
