@@ -1435,12 +1435,17 @@ with aba_planejamento:
                     direcao_ponderada = resumo_velame["direcao_ponderada"]
 
                     # AQUI ESTÁ A MÁGICA: Agora a base de todo o cálculo magnético é a Ponderada!
-                    azimute_referencia_verdadeiro = direcao_ponderada
-
                     azimute_referencia_magnetico = verdadeiro_para_magnetico(
                         azimute_referencia_verdadeiro,
                         declinacao
                     )
+
+                    # --- ALERTA DE VENTO FORTE (> 18 kt) ---
+                    camadas_fortes = df[(df["Fase"] == "Velame aberto") & (df["Velocidade kt"] > 18)]
+                    if not camadas_fortes.empty:
+                        vento_max = camadas_fortes["Velocidade kt"].max()
+                        st.error(f"⚠️ **ATENÇÃO OPERACIONAL:** Vento forte detectado na camada de velame aberto (Pico de {vento_max:.0f} kt). Avalie as margens de segurança para o salto!")
+                    # ---------------------------------------
 
                     r1, r2 = st.columns(2)
 
@@ -2166,13 +2171,27 @@ with aba_camadas:
             key="tipo_lanc_geral"
         )
         
-        # Puxa a velocidade do avião para traçar a linha amarela do 1' Fora no KMZ
-        velocidade_anv_kmz = st.number_input(
-            "Velocidade da Aeronave (m/s) - Usado para calcular o 1' Fora", 
-            value=st.session_state.get("folder_velocidade_anv", 70.0), 
-            step=5.0, 
-            key="kmz_velocidade_anv"
-        )
+# Puxa a velocidade do avião para traçar a linha amarela do 1' Fora no KMZ
+        st.markdown("#### Parâmetros da Aeronave (Para cálculo do 1' Fora)")
+        c_anv1, c_anv2 = st.columns(2)
+        with c_anv1:
+            aeronave_kmz = st.selectbox(
+                "Aeronave",
+                ["C-105 Amazonas / KC-390", "C-95 Bandeirante", "C-98 Caravan", "Outra (Manual)"],
+                key="sel_aero_kmz"
+            )
+        with c_anv2:
+            if aeronave_kmz == "C-105 Amazonas / KC-390":
+                velocidade_anv_kmz = 70.0
+                st.number_input("Velocidade (m/s)", value=70.0, disabled=True, key="num_aero_kmz1")
+            elif aeronave_kmz == "C-95 Bandeirante":
+                velocidade_anv_kmz = 60.0
+                st.number_input("Velocidade (m/s)", value=60.0, disabled=True, key="num_aero_kmz2")
+            elif aeronave_kmz == "C-98 Caravan":
+                velocidade_anv_kmz = 45.0
+                st.number_input("Velocidade (m/s)", value=45.0, disabled=True, key="num_aero_kmz3")
+            else:
+                velocidade_anv_kmz = st.number_input("Velocidade (m/s)", value=70.0, step=1.0, key="num_aero_kmz4")
         
         adicional_cauda_m = 0.0
         if tipo_lancamento == "Lançamento de Cauda":
@@ -2502,13 +2521,18 @@ with aba_dkva:
             st.metric("V (Vento Médio)", f"{v_usado:.1f} kt")
             
         with c_alvo3:
+            # Puxa a altura da aba de planejamento e converte para kft automaticamente
+            altura_comandamento_kft_dkva = float(st.session_state.get("altura_comandamento_ft", 1200.0)) / 1000.0
+            
             A_kft = st.number_input(
                 "A (Altura de abertura em kft)",
-                value=1.2,
+                value=altura_comandamento_kft_dkva,
                 step=0.1,
-                help="Ex: 1.2 significa 1.200 pés.",
-                key="dkva_a_kft" # <--- ADICIONADO ISSO AQUI
+                help="Ex: 1.2 significa 1.200 pés. (Sincronizado automaticamente com a Aba Planejamento)",
+                key=f"dkva_a_auto_{int(st.session_state.get('altura_comandamento_ft', 1200.0))}"
             )
+            # Salva na memória original para garantir que o Relatório TXT continue funcionando perfeitamente
+            st.session_state.dkva_a_kft = A_kft
 
         st.divider()
         st.markdown("### 2. Resultado")
@@ -2842,12 +2866,26 @@ with aba_folder:
             "Esta aba gera um arquivo Word com os dados já calculados no app."
         )
 
-        velocidade_anv = st.number_input(
-            "Velocidade da Anv (m/s)",
-            value=70.0,
-            step=5.0,
-            key="folder_velocidade_anv"
-        )
+        st.markdown("### Parâmetros da Aeronave")
+        c_anv_f1, c_anv_f2 = st.columns(2)
+        with c_anv_f1:
+            aeronave_folder = st.selectbox(
+                "Aeronave",
+                ["C-105 Amazonas / KC-390", "C-95 Bandeirante", "C-98 Caravan", "Outra (Manual)"],
+                key="sel_aero_folder"
+            )
+        with c_anv_f2:
+            if aeronave_folder == "C-105 Amazonas / KC-390":
+                velocidade_anv = 70.0
+                st.number_input("Velocidade (m/s)", value=70.0, disabled=True, key="num_aero_f1")
+            elif aeronave_folder == "C-95 Bandeirante":
+                velocidade_anv = 60.0
+                st.number_input("Velocidade (m/s)", value=60.0, disabled=True, key="num_aero_f2")
+            elif aeronave_folder == "C-98 Caravan":
+                velocidade_anv = 45.0
+                st.number_input("Velocidade (m/s)", value=45.0, disabled=True, key="num_aero_f3")
+            else:
+                velocidade_anv = st.number_input("Velocidade (m/s)", value=70.0, step=1.0, key="num_aero_f4")
         distancia_teorica_1_fora_m = velocidade_anv * 60
 
         st.caption(
