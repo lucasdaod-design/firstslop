@@ -2349,12 +2349,12 @@ with aba_camadas:
     </Placemark>
 """
             
-           # O deslocamento é aplicado ao longo do eixo do vento para compensar inércia e dispersão
-            lat_ps_final, lon_ps_final = calcular_coordenada_destino(
-                lat_d, lon_d, deslocamento_total_m / 1000.0, azimute_vento
-            )
-
             if tipo_lancamento == "Lançamento de Nariz":
+                # FÍSICA CORRIGIDA: O avião voa do Alvo para o D. 
+                # Lança ANTES de chegar no D (voltamos pelo contra_azimute para ficar mais perto do alvo)
+                lat_ps_final, lon_ps_final = calcular_coordenada_destino(
+                    lat_d, lon_d, deslocamento_total_m / 1000.0, contra_azimute(azimute_vento)
+                )
                 st.session_state.ps_origem = "PONTO DE SAÍDA - Nariz (Compensado)"
                 
                 kml_str += f"""
@@ -2373,6 +2373,11 @@ with aba_camadas:
 """
 
             elif tipo_lancamento == "Lançamento de Cauda":
+                # O avião vem de trás, passa pelo D e continua voando. 
+                # Lança ANTES de chegar no D (empurramos o PS para mais longe do alvo pelo azimute_vento)
+                lat_ps_final, lon_ps_final = calcular_coordenada_destino(
+                    lat_d, lon_d, deslocamento_total_m / 1000.0, azimute_vento
+                )
                 st.session_state.ps_origem = "PONTO DE SAÍDA - Cauda"
                 if dog_leg:
                     st.info(f"Dog Leg detectado. Exportando KMZ com a quebra.")
