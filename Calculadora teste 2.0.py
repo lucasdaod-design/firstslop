@@ -1432,9 +1432,16 @@ with aba_planejamento:
                         resumo_velame.get("direcao_media", 0.0)
                     )
 
-                    direcao_ponderada = resumo_velame["direcao_ponderada"]
+                    direcao_ponderada = float(
+                        resumo_velame.get(
+                            "direcao_ponderada",
+                            resumo_velame.get("direcao_media", 0.0)
+                        )
+                    )
 
-                    # AQUI ESTÁ A MÁGICA: Agora a base de todo o cálculo magnético é a Ponderada!
+                    # Base verdadeira/geográfica para os cálculos: Direção Ponderada
+                    azimute_referencia_verdadeiro = direcao_ponderada
+
                     azimute_referencia_magnetico = verdadeiro_para_magnetico(
                         azimute_referencia_verdadeiro,
                         declinacao
