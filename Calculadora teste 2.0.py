@@ -2216,8 +2216,7 @@ with aba_camadas:
         if tipo_lancamento == "Lançamento de Nariz":
             st.info(f"📍 O PS será recuado **{deslocamento_total_m:.0f} metros** a partir do Ponto D (Inércia: {offset_inercia_kmz}m + Dispersão: {dispersao_kmz_m:.0f}m).")
         elif tipo_lancamento == "Lançamento de Cauda":
-            st.info(f"📍 O PS avançará **{deslocamento_total_m:.0f} metros** além do Ponto D (Inércia: {offset_inercia_kmz}m + Dispersão: {dispersao_kmz_m:.0f}m).")
-
+            st.info("📍 O PS será **cravado no limite da Distância D**. (Arrasto e dispersão são desconsiderados no salto de cauda para Velame Aberto).")
         if st.button("Gerar Arquivo KMZ", type="primary", key="btn_kmz_geral"):
             registrar_log_missao("Gerou KMZ Velame Aberto") # <--- RASTREADOR
             import math
@@ -2374,28 +2373,13 @@ with aba_camadas:
 
             elif tipo_lancamento == "Lançamento de Cauda":
                 # O avião vem de trás, passa pelo D e continua voando. 
-                # Lança ANTES de chegar no D (empurramos o PS para mais longe do alvo pelo azimute_vento)
-                lat_ps_final, lon_ps_final = calcular_coordenada_destino(
-                    lat_d, lon_d, deslocamento_total_m / 1000.0, azimute_vento
-                )
-                st.session_state.ps_origem = "PONTO DE SAÍDA - Cauda"
+                # Dispersão e Inércia irrelevantes no Velame Aberto: PS fica cravado no limite D.
+                lat_ps_final = lat_d
+                lon_ps_final = lon_d
+                st.session_state.ps_origem = "PONTO DE SAÍDA - Cauda (Cravado no D)"
+                
                 if dog_leg:
                     st.info(f"Dog Leg detectado. Exportando KMZ com a quebra.")
-                    
-                kml_str += f"""
-    <Placemark>
-      <name>Inércia + Dispersão Cauda ({deslocamento_total_m:.0f} m)</name>
-      <styleUrl>#linhaAmarela</styleUrl>
-      <LineString>
-        <extrude>1</extrude>
-        <tessellate>1</tessellate>
-        <coordinates>
-          {lon_d},{lat_d},0
-          {lon_ps_final},{lat_ps_final},0
-        </coordinates>
-      </LineString>
-    </Placemark>
-"""
 
             st.session_state.ps_lat = lat_ps_final
             st.session_state.ps_lon = lon_ps_final
