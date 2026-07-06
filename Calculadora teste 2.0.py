@@ -1703,30 +1703,6 @@ with aba_calculos:
 
     st.markdown("##### Aeródromo de partida")
 
-    # --- NOVO: AERÓDROMOS PRÉ-CADASTRADOS ---
-    aeros_cadastrados = {
-        "Personalizado / Outro": None,
-        "Aeródromo de Goiânia": {"lat": -16.630929, "lon": -49.217527},
-        "Skydive Cerrado": {"lat": -16.362042, "lon": -48.928371}
-    }
-    
-    aero_selecionado_va = st.selectbox(
-        "Aeródromos Conhecidos", 
-        list(aeros_cadastrados.keys()),
-        help="Selecione um aeródromo salvo para preencher as coordenadas e o mapa automaticamente.",
-        key="sel_aero_conhecido_va"
-    )
-    
-    if aero_selecionado_va != "Personalizado / Outro" and st.session_state.get("ultimo_aero_selecionado_va") != aero_selecionado_va:
-        st.session_state.lat_aerodromo_partida = aeros_cadastrados[aero_selecionado_va]["lat"]
-        st.session_state.lon_aerodromo_partida = aeros_cadastrados[aero_selecionado_va]["lon"]
-        st.session_state.mapa_aerodromo_rev += 1
-        st.session_state.ultimo_aero_selecionado_va = aero_selecionado_va
-        st.rerun()
-    elif aero_selecionado_va == "Personalizado / Outro":
-        st.session_state.ultimo_aero_selecionado_va = "Personalizado / Outro"
-    # ----------------------------------------
-
     with st.form("form_busca_aerodromo"):
         busca_aerodromo = st.text_input(
             "Buscar aeródromo/localidade de partida",
@@ -2917,213 +2893,148 @@ with aba_dkva:
                 mime="application/vnd.google-earth.kmz"
             )
 
-        # =====================================================
-        # CÁLCULO DE AJUSTE ALTIMÉTRICO (DKVA)
-        # =====================================================
-        st.divider()
-        st.markdown("### 🛫 Aeródromo de Partida e Ajuste Altimétrico")
+    # =====================================================
+    # CÁLCULO DE AJUSTE ALTIMÉTRICO (DKVA)
+    # =====================================================
+    st.divider()
+    st.markdown("### 🛫 Aeródromo de Partida e Ajuste Altimétrico")
 
-        with st.form("form_busca_aerodromo_dkva"):
-            busca_aero_dkva = st.text_input(
-                "Buscar aeródromo/localidade de partida",
-                placeholder="Ex: Campo Grande MS, Anápolis, Goiânia..."
-            )
-            btn_busca_dkva = st.form_submit_button("🔎 Buscar local do aeródromo")
+    # --- AERÓDROMOS PRÉ-CADASTRADOS ---
+    aeros_cadastrados_dkva = {
+        "Personalizado / Outro": None,
+        "Aeródromo de Goiânia": {"lat": -16.630929, "lon": -49.217527},
+        "Skydive Cerrado": {"lat": -16.362042, "lon": -48.928371}
+    }
+    
+    aero_selecionado_dkva = st.selectbox(
+        "Aeródromos Conhecidos", 
+        list(aeros_cadastrados_dkva.keys()),
+        help="Selecione um aeródromo salvo para preencher as coordenadas e o mapa automaticamente.",
+        key="sel_aero_conhecido_dkva"
+    )
+    
+    if aero_selecionado_dkva != "Personalizado / Outro" and st.session_state.get("ultimo_aero_selecionado_dkva") != aero_selecionado_dkva:
+        st.session_state.lat_aerodromo_partida = aeros_cadastrados_dkva[aero_selecionado_dkva]["lat"]
+        st.session_state.lon_aerodromo_partida = aeros_cadastrados_dkva[aero_selecionado_dkva]["lon"]
+        st.session_state.mapa_aerodromo_rev += 1
+        st.session_state.ultimo_aero_selecionado_dkva = aero_selecionado_dkva
+        st.rerun()
+    elif aero_selecionado_dkva == "Personalizado / Outro":
+        st.session_state.ultimo_aero_selecionado_dkva = "Personalizado / Outro"
+    # ----------------------------------------
 
-        if btn_busca_dkva and busca_aero_dkva.strip():
-            res_aero = buscar_localidade(busca_aero_dkva)
-            if res_aero:
-                st.session_state.lat_aerodromo_partida = float(res_aero["lat"])
-                st.session_state.lon_aerodromo_partida = float(res_aero["lon"])
-                st.session_state.mapa_aerodromo_rev += 1
-                st.success(f"{res_aero['nome']} | Fonte: {res_aero.get('fonte', 'Busca online')}")
-                st.rerun()
-            else:
-                st.error("Aeródromo/localidade não encontrado.")
-
-        c_aero_lat_dkva, c_aero_lon_dkva = st.columns(2)
-        with c_aero_lat_dkva:
-            lat_aero_dkva = st.number_input(
-                "Latitude do aeródromo de partida",
-                value=float(st.session_state.lat_aerodromo_partida),
-                step=0.0001,
-                format="%.6f",
-                key="lat_aero_dkva"
-            )
-        with c_aero_lon_dkva:
-            lon_aero_dkva = st.number_input(
-                "Longitude do aeródromo de partida",
-                value=float(st.session_state.lon_aerodromo_partida),
-                step=0.0001,
-                format="%.6f",
-                key="lon_aero_dkva"
-            )
-
-        st.session_state.lat_aerodromo_partida = lat_aero_dkva
-        st.session_state.lon_aerodromo_partida = lon_aero_dkva
-
-        # --- NOVO: MAPA INTERATIVO DO AERÓDROMO NO DKVA ---
-        st.markdown("###### Selecionar aeródromo no mapa")
-
-        mapa_aero_dkva = criar_mapa_base(
-            [
-                st.session_state.lat_aerodromo_partida,
-                st.session_state.lon_aerodromo_partida
-            ],
-            zoom=12
+    with st.form("form_busca_aerodromo_dkva"):
+        busca_aero_dkva = st.text_input(
+            "Buscar aeródromo/localidade de partida",
+            placeholder="Ex: Campo Grande MS, Anápolis, Goiânia..."
         )
+        btn_busca_dkva = st.form_submit_button("🔎 Buscar local do aeródromo")
 
-        folium.Marker(
-            location=[
-                st.session_state.lat_aerodromo_partida,
-                st.session_state.lon_aerodromo_partida
-            ],
-            popup="Aeródromo de partida",
-            tooltip="Aeródromo de partida",
-            icon=folium.Icon(color="blue", icon="flag"),
-        ).add_to(mapa_aero_dkva)
-
-        st.markdown("### 🛫 Aeródromo de Partida e Ajuste Altimétrico")
-
-        # --- NOVO: AERÓDROMOS PRÉ-CADASTRADOS ---
-        aeros_cadastrados = {
-            "Personalizado / Outro": None,
-            "Aeródromo de Goiânia": {"lat": -16.630929, "lon": -49.217527},
-            "Skydive Cerrado": {"lat": -16.362042, "lon": -48.928371}
-        }
-        
-        aero_selecionado = st.selectbox(
-            "Aeródromos Conhecidos", 
-            list(aeros_cadastrados.keys()),
-            help="Selecione um aeródromo salvo para preencher as coordenadas e o mapa automaticamente.",
-            key="sel_aero_conhecido_dkva"
-        )
-        
-        if aero_selecionado != "Personalizado / Outro" and st.session_state.get("ultimo_aero_selecionado") != aero_selecionado:
-            st.session_state.lat_aerodromo_partida = aeros_cadastrados[aero_selecionado]["lat"]
-            st.session_state.lon_aerodromo_partida = aeros_cadastrados[aero_selecionado]["lon"]
+    if btn_busca_dkva and busca_aero_dkva.strip():
+        res_aero = buscar_localidade(busca_aero_dkva)
+        if res_aero:
+            st.session_state.lat_aerodromo_partida = float(res_aero["lat"])
+            st.session_state.lon_aerodromo_partida = float(res_aero["lon"])
             st.session_state.mapa_aerodromo_rev += 1
-            st.session_state.ultimo_aero_selecionado = aero_selecionado
+            st.success(f"{res_aero['nome']} | Fonte: {res_aero.get('fonte', 'Busca online')}")
             st.rerun()
-        elif aero_selecionado == "Personalizado / Outro":
-            st.session_state.ultimo_aero_selecionado = "Personalizado / Outro"
-        # ----------------------------------------
+        else:
+            st.error("Aeródromo/localidade não encontrado.")
 
-        with st.form("form_busca_aerodromo_dkva"):
-            busca_aero_dkva = st.text_input(
-                "Buscar aeródromo/localidade de partida",
-                placeholder="Ex: Campo Grande MS, Anápolis, Goiânia..."
-            )
-            btn_busca_dkva = st.form_submit_button("🔎 Buscar local do aeródromo")
-
-        if btn_busca_dkva and busca_aero_dkva.strip():
-            res_aero = buscar_localidade(busca_aero_dkva)
-            if res_aero:
-                st.session_state.lat_aerodromo_partida = float(res_aero["lat"])
-                st.session_state.lon_aerodromo_partida = float(res_aero["lon"])
-                st.session_state.mapa_aerodromo_rev += 1
-                st.success(f"{res_aero['nome']} | Fonte: {res_aero.get('fonte', 'Busca online')}")
-                st.rerun()
-            else:
-                st.error("Aeródromo/localidade não encontrado.")
-
-        c_aero_lat_dkva, c_aero_lon_dkva = st.columns(2)
-        with c_aero_lat_dkva:
-            # BUG CORRIGIDO: Chave dinâmica vinculada ao mapa_aerodromo_rev
-            lat_aero_dkva = st.number_input(
-                "Latitude do aeródromo de partida",
-                value=float(st.session_state.lat_aerodromo_partida),
-                step=0.0001,
-                format="%.6f",
-                key=f"lat_aero_dkva_input_{st.session_state.mapa_aerodromo_rev}"
-            )
-        with c_aero_lon_dkva:
-            # BUG CORRIGIDO: Chave dinâmica vinculada ao mapa_aerodromo_rev
-            lon_aero_dkva = st.number_input(
-                "Longitude do aeródromo de partida",
-                value=float(st.session_state.lon_aerodromo_partida),
-                step=0.0001,
-                format="%.6f",
-                key=f"lon_aero_dkva_input_{st.session_state.mapa_aerodromo_rev}"
-            )
-
-        st.session_state.lat_aerodromo_partida = lat_aero_dkva
-        st.session_state.lon_aerodromo_partida = lon_aero_dkva
-
-        # --- MAPA INTERATIVO DO AERÓDROMO NO DKVA ---
-        st.markdown("###### Selecionar aeródromo no mapa")
-
-        mapa_aero_dkva = criar_mapa_base(
-            [
-                st.session_state.lat_aerodromo_partida,
-                st.session_state.lon_aerodromo_partida
-            ],
-            zoom=12
+    c_aero_lat_dkva, c_aero_lon_dkva = st.columns(2)
+    with c_aero_lat_dkva:
+        lat_aero_dkva = st.number_input(
+            "Latitude do aeródromo de partida",
+            value=float(st.session_state.lat_aerodromo_partida),
+            step=0.0001,
+            format="%.6f",
+            key=f"lat_aero_dkva_input_{st.session_state.mapa_aerodromo_rev}"
+        )
+    with c_aero_lon_dkva:
+        lon_aero_dkva = st.number_input(
+            "Longitude do aeródromo de partida",
+            value=float(st.session_state.lon_aerodromo_partida),
+            step=0.0001,
+            format="%.6f",
+            key=f"lon_aero_dkva_input_{st.session_state.mapa_aerodromo_rev}"
         )
 
-        folium.Marker(
-            location=[
-                st.session_state.lat_aerodromo_partida,
-                st.session_state.lon_aerodromo_partida
-            ],
-            popup="Aeródromo de partida",
-            tooltip="Aeródromo de partida",
-            icon=folium.Icon(color="blue", icon="flag"),
-        ).add_to(mapa_aero_dkva)
+    st.session_state.lat_aerodromo_partida = lat_aero_dkva
+    st.session_state.lon_aerodromo_partida = lon_aero_dkva
 
-        resultado_mapa_dkva = st_folium(
-            mapa_aero_dkva,
-            width=None,
-            height=360,
-            key=f"mapa_aero_dkva_widget_{st.session_state.mapa_aerodromo_rev}",
-            returned_objects=["last_clicked"],
-        )
+    # --- MAPA INTERATIVO DO AERÓDROMO NO DKVA ---
+    st.markdown("###### Selecionar aeródromo no mapa")
 
-        # Se o usuário clicar no mapa do DKVA, atualiza o aeródromo do sistema inteiro
-        if resultado_mapa_dkva and resultado_mapa_dkva.get("last_clicked"):
-            lat_click_dkva = float(resultado_mapa_dkva["last_clicked"]["lat"])
-            lon_click_dkva = float(resultado_mapa_dkva["last_clicked"]["lng"])
+    mapa_aero_dkva = criar_mapa_base(
+        [
+            st.session_state.lat_aerodromo_partida,
+            st.session_state.lon_aerodromo_partida
+        ],
+        zoom=12
+    )
 
-            novo_clique_dkva = [round(lat_click_dkva, 7), round(lon_click_dkva, 7)]
+    folium.Marker(
+        location=[
+            st.session_state.lat_aerodromo_partida,
+            st.session_state.lon_aerodromo_partida
+        ],
+        popup="Aeródromo de partida",
+        tooltip="Aeródromo de partida",
+        icon=folium.Icon(color="blue", icon="flag"),
+    ).add_to(mapa_aero_dkva)
 
-            if st.session_state.get("ultimo_clique_aero_dkva") != novo_clique_dkva:
-                st.session_state.ultimo_clique_aero_dkva = novo_clique_dkva
-                st.session_state.lat_aerodromo_partida = lat_click_dkva
-                st.session_state.lon_aerodromo_partida = lon_click_dkva
-                st.session_state.mapa_aerodromo_rev += 1
-                st.rerun()
+    resultado_mapa_dkva = st_folium(
+        mapa_aero_dkva,
+        width=None,
+        height=360,
+        key=f"mapa_aero_dkva_widget_{st.session_state.mapa_aerodromo_rev}",
+        returned_objects=["last_clicked"],
+    )
 
-        st.caption(
-            f"Aeródromo selecionado: "
-            f"{st.session_state.lat_aerodromo_partida:.6f}, "
-            f"{st.session_state.lon_aerodromo_partida:.6f}"
-        )
+    if resultado_mapa_dkva and resultado_mapa_dkva.get("last_clicked"):
+        lat_click_dkva = float(resultado_mapa_dkva["last_clicked"]["lat"])
+        lon_click_dkva = float(resultado_mapa_dkva["last_clicked"]["lng"])
 
-        if st.button("🧮 Calcular Diferença Altimétrica", key="btn_calc_alt_dkva"):
-            alt_aero_ft, _ = consultar_terreno_e_pressao(lat_aero_dkva, lon_aero_dkva)
-            alt_alvo_ft = float(st.session_state.get("altitude_ft", 0.0))
+        novo_clique_dkva = [round(lat_click_dkva, 7), round(lon_click_dkva, 7)]
+
+        if st.session_state.get("ultimo_clique_aero_dkva") != novo_clique_dkva:
+            st.session_state.ultimo_clique_aero_dkva = novo_clique_dkva
+            st.session_state.lat_aerodromo_partida = lat_click_dkva
+            st.session_state.lon_aerodromo_partida = lon_click_dkva
+            st.session_state.mapa_aerodromo_rev += 1
+            st.rerun()
+
+    st.caption(
+        f"Aeródromo selecionado: "
+        f"{st.session_state.lat_aerodromo_partida:.6f}, "
+        f"{st.session_state.lon_aerodromo_partida:.6f}"
+    )
+
+    if st.button("🧮 Calcular Diferença Altimétrica", key="btn_calc_alt_dkva"):
+        alt_aero_ft, _ = consultar_terreno_e_pressao(lat_aero_dkva, lon_aero_dkva)
+        alt_alvo_ft = float(st.session_state.get("altitude_ft", 0.0))
+        
+        st.session_state.altitude_aerodromo_partida_ft = alt_aero_ft
+        if alt_aero_ft is not None:
+            st.session_state.altimetro_aerodromo_alvo_ft = alt_aero_ft - alt_alvo_ft
+        else:
+            st.session_state.altimetro_aerodromo_alvo_ft = None
+
+    c_res1, c_res2 = st.columns(2)
+    with c_res1:
+        alt_aero_val = st.session_state.get("altitude_aerodromo_partida_ft")
+        if alt_aero_val is not None:
+            st.metric("Altitude do aeródromo", f"{alt_aero_val:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", "."))
+        else:
+            st.metric("Altitude do aeródromo", "—")
             
-            st.session_state.altitude_aerodromo_partida_ft = alt_aero_ft
-            if alt_aero_ft is not None:
-                st.session_state.altimetro_aerodromo_alvo_ft = alt_aero_ft - alt_alvo_ft
-            else:
-                st.session_state.altimetro_aerodromo_alvo_ft = None
-
-        c_res1, c_res2 = st.columns(2)
-        with c_res1:
-            alt_aero_val = st.session_state.get("altitude_aerodromo_partida_ft")
-            if alt_aero_val is not None:
-                st.metric("Altitude do aeródromo", f"{alt_aero_val:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", "."))
-            else:
-                st.metric("Altitude do aeródromo", "—")
-                
-        with c_res2:
-            alt_dif_val = st.session_state.get("altimetro_aerodromo_alvo_ft")
-            if alt_dif_val is not None:
-                st.metric("Diferença Altimétrica", f"{alt_dif_val:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", "."))
-                st.caption("Altitude do aeródromo de partida - altitude do alvo")
-            else:
-                st.metric("Diferença Altimétrica", "—")
+    with c_res2:
+        alt_dif_val = st.session_state.get("altimetro_aerodromo_alvo_ft")
+        if alt_dif_val is not None:
+            st.metric("Diferença Altimétrica", f"{alt_dif_val:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", "."))
+            st.caption("Altitude do aeródromo de partida - altitude do alvo")
+        else:
+            st.metric("Diferença Altimétrica", "—")
             # =====================================================
 # ABA FOLDER DO PILOTO
 # =====================================================
