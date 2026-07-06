@@ -2892,6 +2892,77 @@ with aba_dkva:
                 file_name="DKVA_Tatico.kmz",
                 mime="application/vnd.google-earth.kmz"
             )
+
+        # =====================================================
+        # CÁLCULO DE AJUSTE ALTIMÉTRICO (DKVA)
+        # =====================================================
+        st.divider()
+        st.markdown("### 🛫 Aeródromo de Partida e Ajuste Altimétrico")
+
+        with st.form("form_busca_aerodromo_dkva"):
+            busca_aero_dkva = st.text_input(
+                "Buscar aeródromo/localidade de partida",
+                placeholder="Ex: Campo Grande MS, Anápolis, Goiânia..."
+            )
+            btn_busca_dkva = st.form_submit_button("🔎 Buscar local do aeródromo")
+
+        if btn_busca_dkva and busca_aero_dkva.strip():
+            res_aero = buscar_localidade(busca_aero_dkva)
+            if res_aero:
+                st.session_state.lat_aerodromo_partida = float(res_aero["lat"])
+                st.session_state.lon_aerodromo_partida = float(res_aero["lon"])
+                st.session_state.mapa_aerodromo_rev += 1
+                st.success(f"{res_aero['nome']} | Fonte: {res_aero.get('fonte', 'Busca online')}")
+                st.rerun()
+            else:
+                st.error("Aeródromo/localidade não encontrado.")
+
+        c_aero_lat_dkva, c_aero_lon_dkva = st.columns(2)
+        with c_aero_lat_dkva:
+            lat_aero_dkva = st.number_input(
+                "Latitude do aeródromo de partida",
+                value=float(st.session_state.lat_aerodromo_partida),
+                step=0.0001,
+                format="%.6f",
+                key="lat_aero_dkva"
+            )
+        with c_aero_lon_dkva:
+            lon_aero_dkva = st.number_input(
+                "Longitude do aeródromo de partida",
+                value=float(st.session_state.lon_aerodromo_partida),
+                step=0.0001,
+                format="%.6f",
+                key="lon_aero_dkva"
+            )
+
+        st.session_state.lat_aerodromo_partida = lat_aero_dkva
+        st.session_state.lon_aerodromo_partida = lon_aero_dkva
+
+        if st.button("🧮 Calcular Diferença Altimétrica", key="btn_calc_alt_dkva"):
+            alt_aero_ft, _ = consultar_terreno_e_pressao(lat_aero_dkva, lon_aero_dkva)
+            alt_alvo_ft = float(st.session_state.get("altitude_ft", 0.0))
+            
+            st.session_state.altitude_aerodromo_partida_ft = alt_aero_ft
+            if alt_aero_ft is not None:
+                st.session_state.altimetro_aerodromo_alvo_ft = alt_aero_ft - alt_alvo_ft
+            else:
+                st.session_state.altimetro_aerodromo_alvo_ft = None
+
+        c_res1, c_res2 = st.columns(2)
+        with c_res1:
+            alt_aero_val = st.session_state.get("altitude_aerodromo_partida_ft")
+            if alt_aero_val is not None:
+                st.metric("Altitude do aeródromo", f"{alt_aero_val:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", "."))
+            else:
+                st.metric("Altitude do aeródromo", "—")
+                
+        with c_res2:
+            alt_dif_val = st.session_state.get("altimetro_aerodromo_alvo_ft")
+            if alt_dif_val is not None:
+                st.metric("Diferença Altimétrica", f"{alt_dif_val:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", "."))
+                st.caption("Altitude do aeródromo de partida - altitude do alvo")
+            else:
+                st.metric("Diferença Altimétrica", "—")
             # =====================================================
 # ABA FOLDER DO PILOTO
 # =====================================================
