@@ -2938,6 +2938,56 @@ with aba_dkva:
         st.session_state.lat_aerodromo_partida = lat_aero_dkva
         st.session_state.lon_aerodromo_partida = lon_aero_dkva
 
+        # --- NOVO: MAPA INTERATIVO DO AERÓDROMO NO DKVA ---
+        st.markdown("###### Selecionar aeródromo no mapa")
+
+        mapa_aero_dkva = criar_mapa_base(
+            [
+                st.session_state.lat_aerodromo_partida,
+                st.session_state.lon_aerodromo_partida
+            ],
+            zoom=12
+        )
+
+        folium.Marker(
+            location=[
+                st.session_state.lat_aerodromo_partida,
+                st.session_state.lon_aerodromo_partida
+            ],
+            popup="Aeródromo de partida",
+            tooltip="Aeródromo de partida",
+            icon=folium.Icon(color="blue", icon="flag"),
+        ).add_to(mapa_aero_dkva)
+
+        resultado_mapa_dkva = st_folium(
+            mapa_aero_dkva,
+            width=None,
+            height=360,
+            key=f"mapa_aero_dkva_widget_{st.session_state.mapa_aerodromo_rev}",
+            returned_objects=["last_clicked"],
+        )
+
+        # Se o usuário clicar no mapa do DKVA, atualiza o aeródromo do sistema inteiro
+        if resultado_mapa_dkva and resultado_mapa_dkva.get("last_clicked"):
+            lat_click_dkva = float(resultado_mapa_dkva["last_clicked"]["lat"])
+            lon_click_dkva = float(resultado_mapa_dkva["last_clicked"]["lng"])
+
+            novo_clique_dkva = [round(lat_click_dkva, 7), round(lon_click_dkva, 7)]
+
+            if st.session_state.get("ultimo_clique_aero_dkva") != novo_clique_dkva:
+                st.session_state.ultimo_clique_aero_dkva = novo_clique_dkva
+                st.session_state.lat_aerodromo_partida = lat_click_dkva
+                st.session_state.lon_aerodromo_partida = lon_click_dkva
+                st.session_state.mapa_aerodromo_rev += 1
+                st.rerun()
+
+        st.caption(
+            f"Aeródromo selecionado: "
+            f"{st.session_state.lat_aerodromo_partida:.6f}, "
+            f"{st.session_state.lon_aerodromo_partida:.6f}"
+        )
+        # ----------------------------------------------------
+
         if st.button("🧮 Calcular Diferença Altimétrica", key="btn_calc_alt_dkva"):
             alt_aero_ft, _ = consultar_terreno_e_pressao(lat_aero_dkva, lon_aero_dkva)
             alt_alvo_ft = float(st.session_state.get("altitude_ft", 0.0))
