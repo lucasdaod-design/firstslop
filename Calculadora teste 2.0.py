@@ -1149,7 +1149,32 @@ with aba_planejamento:
     with col_esq:
         st.subheader("1. Alvo")
 
-        # NOVO: Caixa para digitar o nome da ZL
+        # --- NOVO: ZLs PRÉ-CADASTRADAS ---
+        zls_cadastradas = {
+            "Personalizado / Outro": None,
+            "Itograss": {"lat": -16.479218, "lon": -49.226422},
+            "Skydive Cerrado": {"lat": -16.362042, "lon": -48.928371}
+        }
+        
+        zl_selecionada = st.selectbox(
+            "Zonas de Lançamento Rápidas", 
+            list(zls_cadastradas.keys()),
+            help="Selecione uma ZL salva para preencher as coordenadas e o mapa automaticamente."
+        )
+        
+        if zl_selecionada != "Personalizado / Outro" and st.session_state.get("ultima_zl_selecionada") != zl_selecionada:
+            st.session_state.lat = zls_cadastradas[zl_selecionada]["lat"]
+            st.session_state.lon = zls_cadastradas[zl_selecionada]["lon"]
+            st.session_state.localidade_alvo = zl_selecionada
+            st.session_state.centro_mapa = [st.session_state.lat, st.session_state.lon]
+            st.session_state.mapa_planejamento_rev += 1
+            st.session_state.ultima_zl_selecionada = zl_selecionada
+            st.rerun()
+        elif zl_selecionada == "Personalizado / Outro":
+            st.session_state.ultima_zl_selecionada = "Personalizado / Outro"
+        # ---------------------------------
+
+        # Caixa para digitar o nome da ZL (agora atualizada pela seleção acima)
         localidade_alvo = st.text_input(
             "Localidade / Nome da ZL", 
             value=st.session_state.get("localidade_alvo", ""),
@@ -2654,6 +2679,14 @@ with aba_dkva:
                         
                 except Exception:
                     pass
+            
+            # --- MÁGICA DA INTEGRAÇÃO COM O FOLDER DO PILOTO ---
+            # Salva os dados recém-calculados do DKVA nas mesmas variáveis globais que o Folder lê!
+            if alt_ps_ft > 0:
+                st.session_state.altitude_consulta_ft = alt_ps_ft
+            if qfe_hpa > 0:
+                st.session_state.qfe_consulta_hpa = qfe_hpa
+            # ---------------------------------------------------
 
             c_ps1, c_ps2 = st.columns(2)
             
