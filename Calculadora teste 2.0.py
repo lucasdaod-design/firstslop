@@ -1222,7 +1222,6 @@ with aba_planejamento:
             # Grava na memória para não rodar em loop
             st.session_state.last_lat_calc = st.session_state.lat
             st.session_state.last_lon_calc = st.session_state.lon
-            st.rerun()
 
         c1, c2, c3 = st.columns(3)
 
