@@ -1156,13 +1156,6 @@ with aba_planejamento:
             "Skydive Cerrado": {"lat": -16.362042, "lon": -48.928371}
         }
         
-        zl_selecionada = st.selectbox(
-            "Zonas de Lançamento Rápidas", 
-            list(zls_cadastradas.keys()),
-            help="Selecione uma ZL salva para preencher as coordenadas e o mapa automaticamente.",
-            key="sel_zl_rapida"
-        )
-        
         if zl_selecionada != "Personalizado / Outro" and st.session_state.get("ultima_zl_selecionada") != zl_selecionada:
             st.session_state.lat = zls_cadastradas[zl_selecionada]["lat"]
             st.session_state.lon = zls_cadastradas[zl_selecionada]["lon"]
@@ -1170,6 +1163,9 @@ with aba_planejamento:
             st.session_state.centro_mapa = [st.session_state.lat, st.session_state.lon]
             st.session_state.mapa_planejamento_rev += 1
             st.session_state.ultima_zl_selecionada = zl_selecionada
+
+            st.rerun()
+
         elif zl_selecionada == "Personalizado / Outro":
             st.session_state.ultima_zl_selecionada = "Personalizado / Outro"
         # ---------------------------------
