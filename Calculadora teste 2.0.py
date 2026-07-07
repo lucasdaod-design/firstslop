@@ -1149,14 +1149,18 @@ with aba_planejamento:
     with col_esq:
         st.subheader("1. Alvo")
 
-        
-
         # --- NOVO: ZLs PRÉ-CADASTRADAS ---
         zls_cadastradas = {
             "Personalizado / Outro": None,
             "Itograss": {"lat": -16.479218, "lon": -49.226422},
             "Skydive Cerrado": {"lat": -16.362042, "lon": -48.928371}
         }
+        
+        zl_selecionada = st.selectbox(
+            "Zonas de Lançamento Rápidas", 
+            list(zls_cadastradas.keys()),
+            help="Selecione uma ZL salva para preencher as coordenadas e o mapa automaticamente."
+        )
         
         if zl_selecionada != "Personalizado / Outro" and st.session_state.get("ultima_zl_selecionada") != zl_selecionada:
             st.session_state.lat = zls_cadastradas[zl_selecionada]["lat"]
@@ -1165,9 +1169,7 @@ with aba_planejamento:
             st.session_state.centro_mapa = [st.session_state.lat, st.session_state.lon]
             st.session_state.mapa_planejamento_rev += 1
             st.session_state.ultima_zl_selecionada = zl_selecionada
-
             st.rerun()
-
         elif zl_selecionada == "Personalizado / Outro":
             st.session_state.ultima_zl_selecionada = "Personalizado / Outro"
         # ---------------------------------
@@ -1220,6 +1222,7 @@ with aba_planejamento:
             # Grava na memória para não rodar em loop
             st.session_state.last_lat_calc = st.session_state.lat
             st.session_state.last_lon_calc = st.session_state.lon
+            st.rerun()
 
         c1, c2, c3 = st.columns(3)
 
@@ -1301,23 +1304,21 @@ with aba_planejamento:
                 st.session_state.mapa_planejamento_rev += 1
                 st.rerun()
 
-    # --- MOVENDO TUDO PARA DENTRO DA COLUNA ESQUERDA (col_esq) ---
-        # --- INÍCIO DO BLOCO CORRIGIDO (TUDO DENTRO DA COLUNA ESQUERDA) ---
-        st.divider()
-        st.subheader("2. Parâmetros")
+    st.divider()
+    st.subheader("2. Parâmetros")
 
-        c4, c5, c6 = st.columns(3)
+    c4, c5, c6 = st.columns(3)
 
-        with c4:
+    with c4:
             altura_comandamento_ft = st.number_input(
                 "Altura de comandamento ft",
                 value=12000.0,
                 step=500.0,
                 key="altura_comandamento",
             )
-            st.session_state.altura_comandamento_ft = altura_comandamento_ft
+    st.session_state.altura_comandamento_ft = altura_comandamento_ft
 
-        with c5:
+    with c5:
             perda_comandamento_ft = st.number_input(
                 "Perda no comandamento ft",
                 value=1000.0,
@@ -1325,7 +1326,7 @@ with aba_planejamento:
                 key="perda_comandamento",
             )
 
-        with c6:
+    with c6:
             altura_saida_ft = st.number_input(
                 "Altura de saída ft",
                 value=12000.0,
@@ -1334,99 +1335,103 @@ with aba_planejamento:
                 key="altura_saida",
             )
 
-        topo_velame_msl = altitude_alvo_ft + max(altura_comandamento_ft - perda_comandamento_ft, 0)
-        topo_comandamento_msl = altitude_alvo_ft + altura_comandamento_ft
+    topo_velame_msl = altitude_alvo_ft + max(altura_comandamento_ft - perda_comandamento_ft, 0)
+    topo_comandamento_msl = altitude_alvo_ft + altura_comandamento_ft
 
-        st.divider()
-
-        st.subheader("3. Windgram / Dados de Vento")
-
-        st.info("💡 Aqui você deve copiar e Colar o Windgrama com as três colunas que aparecem no NOAA, do jeito que elas aparecem! É só copiar e colar aqui!")
-
-        st.link_button(
-            "Abrir NOAA READY",
-            "https://www.ready.noaa.gov/READYcmet.php"
-        )
-
-        st.write("Coordenadas para copiar no NOAA (copie uma por vez):")
-        col_copy1, col_copy2 = st.columns(2)
         
-        with col_copy1:
-            st.caption("Latitude:")
-            st.code(f"{st.session_state.lat:.6f}")
-            
-        with col_copy2:
-            st.caption("Longitude:")
-            st.code(f"{st.session_state.lon:.6f}")
-            
-        with st.expander("Instruções rápidas"):
-            st.markdown(
-                """
-                No NOAA READY:
+        # =====================================================
+        # PAINEL DINÂMICO DO PONTO DE SAÍDA (PS)
+        # =====================================================
+    
+    st.divider()
 
-                1. Insira latitude e longitude.
-                2. Escolha a previsão mais recente.
-                3. Produto: **WINDGRAM**.
-                4. Escolha o horário Zulu do lançamento.
-                5. Duração: **3h**.
-                6. Saída: **Text only**.
-                7. Resolva o CAPTCHA no site.
-                8. Copie a tabela textual e cole abaixo.
-                """
+    st.subheader("3. Windgram / Dados de Vento")
+
+    st.info("💡 Aqui você deve copiar e Colar o Windgrama com as três colunas que aparecem no NOAA, do jeito que elas aparecem! É só copiar e colar aqui!")
+
+    st.link_button(
+                "Abrir NOAA READY",
+                "https://www.ready.noaa.gov/READYcmet.php"
             )
 
-        texto_windgram = st.text_area(
-            "Cole aqui o Windgram textual",
-            height=260,
-            placeholder="Ex:\nFHR: + 0.\n700.mb 290@030\n750.mb 289@029\n800.mb 286@026",
-            key="windgram_texto",
-        )
+    st.write("Coordenadas para copiar no NOAA (copie uma por vez):")
+    col_copy1, col_copy2 = st.columns(2)
+    
+    with col_copy1:
+        st.caption("Latitude:")
+        st.code(f"{st.session_state.lat:.6f}")
+        
+    with col_copy2:
+        st.caption("Longitude:")
+        st.code(f"{st.session_state.lon:.6f}")
+    with st.expander("Instruções rápidas"):
+                st.markdown(
+                    """
+                    No NOAA READY:
 
-        if st.button("Carregar Windgram e calcular", type="primary"):
-            registros, colunas = processar_windgram(texto_windgram)
-
-            if not registros:
-                st.error("Não consegui ler o Windgram. Cole linhas no formato: 700.mb 290@030")
-            else:
-                if not colunas:
-                    colunas = list(registros[0]["valores"].keys())
-
-                coluna = colunas[0]
-
-                df = montar_dataframe_windgram(
-                    registros=registros,
-                    coluna=coluna,
-                    altitude_alvo_ft=altitude_alvo_ft,
-                    altura_comandamento_ft=altura_comandamento_ft,
-                    perda_comandamento_ft=perda_comandamento_ft,
-                    altura_saida_ft=altura_saida_ft,
+                    1. Insira latitude e longitude.
+                    2. Escolha a previsão mais recente.
+                    3. Produto: **WINDGRAM**.
+                    4. Escolha o horário Zulu do lançamento.
+                    5. Duração: **3h**.
+                    6. Saída: **Text only**.
+                    7. Resolva o CAPTCHA no site.
+                    8. Copie a tabela textual e cole abaixo.
+                    """
                 )
 
-                resumo_velame = resumo_por_fase(df, "Velame aberto")
-                resumo_queda = resumo_por_fase(df, "Queda livre")
+    texto_windgram = st.text_area(
+                "Cole aqui o Windgram textual",
+                height=260,
+                placeholder="Ex:\nFHR: + 0.\n700.mb 290@030\n750.mb 289@029\n800.mb 286@026",
+                key="windgram_texto",
+            )
 
-                st.session_state.df_windgram = df
-                st.session_state.resumo_velame = resumo_velame
-                st.session_state.resumo_queda = resumo_queda
-                st.session_state.declinacao_usada = declinacao
+    if st.button("Carregar Windgram e calcular", type="primary"):
+                registros, colunas = processar_windgram(texto_windgram)
 
-                if resumo_velame:
-                    st.session_state.vento_medio_velame = resumo_velame["vento_medio"]
-                    st.session_state.direcao_vento_verdadeira_kmz = float(
-                        resumo_velame.get(
-                            "direcao_ponderada",
-                            resumo_velame.get("direcao_media", 0.0)
-                        )
+                if not registros:
+                    st.error("Não consegui ler o Windgram. Cole linhas no formato: 700.mb 290@030")
+                else:
+                    if not colunas:
+                        colunas = list(registros[0]["valores"].keys())
+
+                    coluna = colunas[0]
+
+                    df = montar_dataframe_windgram(
+                        registros=registros,
+                        coluna=coluna,
+                        altitude_alvo_ft=altitude_alvo_ft,
+                        altura_comandamento_ft=altura_comandamento_ft,
+                        perda_comandamento_ft=perda_comandamento_ft,
+                        altura_saida_ft=altura_saida_ft,
                     )
-                    st.session_state.direcao_media_velame = float(
-                        resumo_velame.get(
-                            "direcao_media_circular",
-                            resumo_velame.get("direcao_media", 0.0)
+
+                    resumo_velame = resumo_por_fase(df, "Velame aberto")
+                    resumo_queda = resumo_por_fase(df, "Queda livre")
+
+                    st.session_state.df_windgram = df
+                    st.session_state.resumo_velame = resumo_velame
+                    st.session_state.resumo_queda = resumo_queda
+                    st.session_state.declinacao_usada = declinacao
+
+                    if resumo_velame:
+                        st.session_state.vento_medio_velame = resumo_velame["vento_medio"]
+
+                        st.session_state.direcao_vento_verdadeira_kmz = float(
+                            resumo_velame.get(
+                                "direcao_ponderada",
+                                resumo_velame.get("direcao_media", 0.0)
+                            )
                         )
-                    )
-                st.success("Windgram processado com sucesso.")
-        # --- FIM DO BLOCO CORRIGIDO ---
-        # -----------------------------------------------------------------
+
+                        st.session_state.direcao_media_velame = float(
+                            resumo_velame.get(
+                                "direcao_media_circular",
+                                resumo_velame.get("direcao_media", 0.0)
+                            )
+                        )
+                    st.success("Windgram processado com sucesso.")
 
     with col_dir:
             st.subheader("Resultado")
@@ -1698,35 +1703,14 @@ with aba_calculos:
 
     st.markdown("##### Aeródromo de partida")
 
-    # --- AERÓDROMOS PRÉ-CADASTRADOS ---
-    aeros_cadastrados_va = {
-        "Personalizado / Outro": None,
-        "Aeródromo de Goiânia": {"lat": -16.630929, "lon": -49.217527},
-        "Skydive Cerrado": {"lat": -16.362042, "lon": -48.928371}
-    }
-    
-    aero_selecionado_va = st.selectbox(
-        "Aeródromos Conhecidos", 
-        list(aeros_cadastrados_va.keys()),
-        help="Selecione um aeródromo salvo para preencher as coordenadas e o mapa automaticamente.",
-        key="sel_aero_conhecido_va"
-    )
-    
-    if aero_selecionado_va != "Personalizado / Outro" and st.session_state.get("ultimo_aero_selecionado_va") != aero_selecionado_va:
-        st.session_state.lat_aerodromo_partida = aeros_cadastrados_va[aero_selecionado_va]["lat"]
-        st.session_state.lon_aerodromo_partida = aeros_cadastrados_va[aero_selecionado_va]["lon"]
-        st.session_state.mapa_aerodromo_rev += 1
-        st.session_state.ultimo_aero_selecionado_va = aero_selecionado_va
-    elif aero_selecionado_va == "Personalizado / Outro":
-        st.session_state.ultimo_aero_selecionado_va = "Personalizado / Outro"
-    # ----------------------------------------
-
     with st.form("form_busca_aerodromo"):
         busca_aerodromo = st.text_input(
             "Buscar aeródromo/localidade de partida",
             placeholder="Ex: Campo Grande MS, Anápolis, Goiânia, Base Aérea..."
         )
+
         buscar_aerodromo = st.form_submit_button("🔎 Buscar local do aeródromo")
+
     if buscar_aerodromo:
         if busca_aerodromo.strip():
             resultado_aero = buscar_localidade(busca_aerodromo)
@@ -2915,7 +2899,7 @@ with aba_dkva:
     st.divider()
     st.markdown("### 🛫 Aeródromo de Partida e Ajuste Altimétrico")
 
-    # --- LISTA DE AERÓDROMOS ---
+    # --- AERÓDROMOS PRÉ-CADASTRADOS ---
     aeros_cadastrados_dkva = {
         "Personalizado / Outro": None,
         "Aeródromo de Goiânia": {"lat": -16.630929, "lon": -49.217527},
@@ -2925,81 +2909,133 @@ with aba_dkva:
     aero_selecionado_dkva = st.selectbox(
         "Aeródromos Conhecidos", 
         list(aeros_cadastrados_dkva.keys()),
+        help="Selecione um aeródromo salvo para preencher as coordenadas e o mapa automaticamente.",
         key="sel_aero_conhecido_dkva"
     )
     
-    if aero_selecionado_dkva != "Personalizado / Outro" and st.session_state.get("last_aero_sel_dkva") != aero_selecionado_dkva:
+    if aero_selecionado_dkva != "Personalizado / Outro" and st.session_state.get("ultimo_aero_selecionado_dkva") != aero_selecionado_dkva:
         st.session_state.lat_aerodromo_partida = aeros_cadastrados_dkva[aero_selecionado_dkva]["lat"]
         st.session_state.lon_aerodromo_partida = aeros_cadastrados_dkva[aero_selecionado_dkva]["lon"]
         st.session_state.mapa_aerodromo_rev += 1
-        st.session_state.last_aero_sel_dkva = aero_selecionado_dkva
-
-    # O nome deste form foi mudado para evitar o conflito fatal!
-    with st.form("form_busca_aero_dkva_novo"):
-        busca_aero = st.text_input("Buscar aeródromo por nome")
-        if st.form_submit_button("🔎 Buscar"):
-            res = buscar_localidade(busca_aero)
-            if res:
-                st.session_state.lat_aerodromo_partida = float(res["lat"])
-                st.session_state.lon_aerodromo_partida = float(res["lon"])
-                st.session_state.mapa_aerodromo_rev += 1
-                st.rerun()
-
-    c_lat, c_lon = st.columns(2)
-    with c_lat:
-        lat_aero = st.number_input(
-            "Latitude", 
-            value=float(st.session_state.lat_aerodromo_partida), 
-            format="%.6f", 
-            key=f"lat_aero_dkva_{st.session_state.mapa_aerodromo_rev}"
-        )
-    with c_lon:
-        lon_aero = st.number_input(
-            "Longitude", 
-            value=float(st.session_state.lon_aerodromo_partida), 
-            format="%.6f", 
-            key=f"lon_aero_dkva_{st.session_state.mapa_aerodromo_rev}"
-        )
-    
-    st.session_state.lat_aerodromo_partida = lat_aero
-    st.session_state.lon_aerodromo_partida = lon_aero
-
-    # --- MAPA E CÁLCULO ---
-    st.markdown("###### Selecionar aeródromo no mapa")
-    mapa = criar_mapa_base([lat_aero, lon_aero], zoom=12)
-    folium.Marker([lat_aero, lon_aero], icon=folium.Icon(color="blue", icon="flag")).add_to(mapa)
-    
-    res_mapa = st_folium(
-        mapa, 
-        width=None, 
-        height=300, 
-        key=f"mapa_dkva_render_{st.session_state.mapa_aerodromo_rev}",
-        returned_objects=["last_clicked"]
-    )
-    
-    if res_mapa and res_mapa.get("last_clicked"):
-        st.session_state.lat_aerodromo_partida = float(res_mapa["last_clicked"]["lat"])
-        st.session_state.lon_aerodromo_partida = float(res_mapa["last_clicked"]["lng"])
-        st.session_state.mapa_aerodromo_rev += 1
+        st.session_state.ultimo_aero_selecionado_dkva = aero_selecionado_dkva
         st.rerun()
+    elif aero_selecionado_dkva == "Personalizado / Outro":
+        st.session_state.ultimo_aero_selecionado_dkva = "Personalizado / Outro"
+    # ----------------------------------------
+
+    with st.form("form_busca_aerodromo_dkva"):
+        busca_aero_dkva = st.text_input(
+            "Buscar aeródromo/localidade de partida",
+            placeholder="Ex: Campo Grande MS, Anápolis, Goiânia..."
+        )
+        btn_busca_dkva = st.form_submit_button("🔎 Buscar local do aeródromo")
+
+    if btn_busca_dkva and busca_aero_dkva.strip():
+        res_aero = buscar_localidade(busca_aero_dkva)
+        if res_aero:
+            st.session_state.lat_aerodromo_partida = float(res_aero["lat"])
+            st.session_state.lon_aerodromo_partida = float(res_aero["lon"])
+            st.session_state.mapa_aerodromo_rev += 1
+            st.success(f"{res_aero['nome']} | Fonte: {res_aero.get('fonte', 'Busca online')}")
+            st.rerun()
+        else:
+            st.error("Aeródromo/localidade não encontrado.")
+
+    c_aero_lat_dkva, c_aero_lon_dkva = st.columns(2)
+    with c_aero_lat_dkva:
+        lat_aero_dkva = st.number_input(
+            "Latitude do aeródromo de partida",
+            value=float(st.session_state.lat_aerodromo_partida),
+            step=0.0001,
+            format="%.6f",
+            key=f"lat_aero_dkva_input_{st.session_state.mapa_aerodromo_rev}"
+        )
+    with c_aero_lon_dkva:
+        lon_aero_dkva = st.number_input(
+            "Longitude do aeródromo de partida",
+            value=float(st.session_state.lon_aerodromo_partida),
+            step=0.0001,
+            format="%.6f",
+            key=f"lon_aero_dkva_input_{st.session_state.mapa_aerodromo_rev}"
+        )
+
+    st.session_state.lat_aerodromo_partida = lat_aero_dkva
+    st.session_state.lon_aerodromo_partida = lon_aero_dkva
+
+    # --- MAPA INTERATIVO DO AERÓDROMO NO DKVA ---
+    st.markdown("###### Selecionar aeródromo no mapa")
+
+    mapa_aero_dkva = criar_mapa_base(
+        [
+            st.session_state.lat_aerodromo_partida,
+            st.session_state.lon_aerodromo_partida
+        ],
+        zoom=12
+    )
+
+    folium.Marker(
+        location=[
+            st.session_state.lat_aerodromo_partida,
+            st.session_state.lon_aerodromo_partida
+        ],
+        popup="Aeródromo de partida",
+        tooltip="Aeródromo de partida",
+        icon=folium.Icon(color="blue", icon="flag"),
+    ).add_to(mapa_aero_dkva)
+
+    resultado_mapa_dkva = st_folium(
+        mapa_aero_dkva,
+        width=None,
+        height=360,
+        key=f"mapa_aero_dkva_widget_{st.session_state.mapa_aerodromo_rev}",
+        returned_objects=["last_clicked"],
+    )
+
+    if resultado_mapa_dkva and resultado_mapa_dkva.get("last_clicked"):
+        lat_click_dkva = float(resultado_mapa_dkva["last_clicked"]["lat"])
+        lon_click_dkva = float(resultado_mapa_dkva["last_clicked"]["lng"])
+
+        novo_clique_dkva = [round(lat_click_dkva, 7), round(lon_click_dkva, 7)]
+
+        if st.session_state.get("ultimo_clique_aero_dkva") != novo_clique_dkva:
+            st.session_state.ultimo_clique_aero_dkva = novo_clique_dkva
+            st.session_state.lat_aerodromo_partida = lat_click_dkva
+            st.session_state.lon_aerodromo_partida = lon_click_dkva
+            st.session_state.mapa_aerodromo_rev += 1
+            st.rerun()
+
+    st.caption(
+        f"Aeródromo selecionado: "
+        f"{st.session_state.lat_aerodromo_partida:.6f}, "
+        f"{st.session_state.lon_aerodromo_partida:.6f}"
+    )
 
     if st.button("🧮 Calcular Diferença Altimétrica", key="btn_calc_alt_dkva"):
-        alt_aero_ft, _ = consultar_terreno_e_pressao(lat_aero, lon_aero)
+        alt_aero_ft, _ = consultar_terreno_e_pressao(lat_aero_dkva, lon_aero_dkva)
         alt_alvo_ft = float(st.session_state.get("altitude_ft", 0.0))
+        
         st.session_state.altitude_aerodromo_partida_ft = alt_aero_ft
-        st.session_state.altimetro_aerodromo_alvo_ft = (alt_aero_ft - alt_alvo_ft) if alt_aero_ft else None
-
-    c_r1, c_r2 = st.columns(2)
-    with c_r1:
-        alt_a_val = st.session_state.get("altitude_aerodromo_partida_ft")
-        st.metric("Altitude do aeródromo", f"{alt_a_val:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", ".") if alt_a_val is not None else "—")
-    with c_r2:
-        alt_d_val = st.session_state.get("altimetro_aerodromo_alvo_ft")
-        if alt_d_val is not None:
-            st.metric("Diferença Altimétrica", f"{alt_d_val:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", "."))
-            st.caption("Altitude do aeródromo - alvo")
+        if alt_aero_ft is not None:
+            st.session_state.altimetro_aerodromo_alvo_ft = alt_aero_ft - alt_alvo_ft
         else:
-            st.metric("Diferença Altimétrica", "—")            # =====================================================
+            st.session_state.altimetro_aerodromo_alvo_ft = None
+
+    c_res1, c_res2 = st.columns(2)
+    with c_res1:
+        alt_aero_val = st.session_state.get("altitude_aerodromo_partida_ft")
+        if alt_aero_val is not None:
+            st.metric("Altitude do aeródromo", f"{alt_aero_val:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", "."))
+        else:
+            st.metric("Altitude do aeródromo", "—")
+            
+    with c_res2:
+        alt_dif_val = st.session_state.get("altimetro_aerodromo_alvo_ft")
+        if alt_dif_val is not None:
+            st.metric("Diferença Altimétrica", f"{alt_dif_val:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", "."))
+            st.caption("Altitude do aeródromo de partida - altitude do alvo")
+        else:
+            st.metric("Diferença Altimétrica", "—")
+            # =====================================================
 # ABA FOLDER DO PILOTO
 # =====================================================
 
