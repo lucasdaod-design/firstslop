@@ -1159,7 +1159,8 @@ with aba_planejamento:
         zl_selecionada = st.selectbox(
             "Zonas de Lançamento Rápidas", 
             list(zls_cadastradas.keys()),
-            help="Selecione uma ZL salva para preencher as coordenadas e o mapa automaticamente."
+            help="Selecione uma ZL salva para preencher as coordenadas e o mapa automaticamente.",
+            key="sel_zl_rapida"
         )
         
         if zl_selecionada != "Personalizado / Outro" and st.session_state.get("ultima_zl_selecionada") != zl_selecionada:
@@ -1304,21 +1305,22 @@ with aba_planejamento:
                 st.session_state.mapa_planejamento_rev += 1
                 st.rerun()
 
-    st.divider()
-    st.subheader("2. Parâmetros")
+    # --- MOVENDO TUDO PARA DENTRO DA COLUNA ESQUERDA (col_esq) ---
+        st.divider()
+        st.subheader("2. Parâmetros")
 
-    c4, c5, c6 = st.columns(3)
+        c4, c5, c6 = st.columns(3)
 
-    with c4:
+        with c4:
             altura_comandamento_ft = st.number_input(
                 "Altura de comandamento ft",
                 value=12000.0,
                 step=500.0,
                 key="altura_comandamento",
             )
-    st.session_state.altura_comandamento_ft = altura_comandamento_ft
+            st.session_state.altura_comandamento_ft = altura_comandamento_ft
 
-    with c5:
+        with c5:
             perda_comandamento_ft = st.number_input(
                 "Perda no comandamento ft",
                 value=1000.0,
@@ -1326,7 +1328,7 @@ with aba_planejamento:
                 key="perda_comandamento",
             )
 
-    with c6:
+        with c6:
             altura_saida_ft = st.number_input(
                 "Altura de saída ft",
                 value=12000.0,
@@ -1335,103 +1337,98 @@ with aba_planejamento:
                 key="altura_saida",
             )
 
-    topo_velame_msl = altitude_alvo_ft + max(altura_comandamento_ft - perda_comandamento_ft, 0)
-    topo_comandamento_msl = altitude_alvo_ft + altura_comandamento_ft
+        topo_velame_msl = altitude_alvo_ft + max(altura_comandamento_ft - perda_comandamento_ft, 0)
+        topo_comandamento_msl = altitude_alvo_ft + altura_comandamento_ft
 
+        st.divider()
+
+        st.subheader("3. Windgram / Dados de Vento")
+
+        st.info("💡 Aqui você deve copiar e colar o Windgrama com as três colunas que aparecem no NOAA, do jeito que elas aparecem!")
+
+        st.link_button(
+            "Abrir NOAA READY",
+            "https://www.ready.noaa.gov/READYcmet.php"
+        )
+
+        st.write("Coordenadas para copiar no NOAA (copie uma por vez):")
+        col_copy1, col_copy2 = st.columns(2)
         
-        # =====================================================
-        # PAINEL DINÂMICO DO PONTO DE SAÍDA (PS)
-        # =====================================================
-    
-    st.divider()
+        with col_copy1:
+            st.caption("Latitude:")
+            st.code(f"{st.session_state.lat:.6f}")
+            
+        with col_copy2:
+            st.caption("Longitude:")
+            st.code(f"{st.session_state.lon:.6f}")
 
-    st.subheader("3. Windgram / Dados de Vento")
+        with st.expander("Instruções rápidas"):
+            st.markdown(
+                """
+                No NOAA READY:
 
-    st.info("💡 Aqui você deve copiar e Colar o Windgrama com as três colunas que aparecem no NOAA, do jeito que elas aparecem! É só copiar e colar aqui!")
-
-    st.link_button(
-                "Abrir NOAA READY",
-                "https://www.ready.noaa.gov/READYcmet.php"
+                1. Insira latitude e longitude.
+                2. Escolha a previsão mais recente.
+                3. Produto: **WINDGRAM**.
+                4. Escolha o horário Zulu do lançamento.
+                5. Duração: **3h**.
+                6. Saída: **Text only**.
+                7. Resolva o CAPTCHA no site.
+                8. Copie a tabela textual e cole abaixo.
+                """
             )
 
-    st.write("Coordenadas para copiar no NOAA (copie uma por vez):")
-    col_copy1, col_copy2 = st.columns(2)
-    
-    with col_copy1:
-        st.caption("Latitude:")
-        st.code(f"{st.session_state.lat:.6f}")
-        
-    with col_copy2:
-        st.caption("Longitude:")
-        st.code(f"{st.session_state.lon:.6f}")
-    with st.expander("Instruções rápidas"):
-                st.markdown(
-                    """
-                    No NOAA READY:
+        texto_windgram = st.text_area(
+            "Cole aqui o Windgram textual",
+            height=260,
+            placeholder="Ex:\nFHR: + 0.\n700.mb 290@030\n750.mb 289@029\n800.mb 286@026",
+            key="windgram_texto",
+        )
 
-                    1. Insira latitude e longitude.
-                    2. Escolha a previsão mais recente.
-                    3. Produto: **WINDGRAM**.
-                    4. Escolha o horário Zulu do lançamento.
-                    5. Duração: **3h**.
-                    6. Saída: **Text only**.
-                    7. Resolva o CAPTCHA no site.
-                    8. Copie a tabela textual e cole abaixo.
-                    """
+        if st.button("Carregar Windgram e calcular", type="primary"):
+            registros, colunas = processar_windgram(texto_windgram)
+
+            if not registros:
+                st.error("Não consegui ler o Windgram. Cole linhas no formato: 700.mb 290@030")
+            else:
+                if not colunas:
+                    colunas = list(registros[0]["valores"].keys())
+
+                coluna = colunas[0]
+
+                df = montar_dataframe_windgram(
+                    registros=registros,
+                    coluna=coluna,
+                    altitude_alvo_ft=altitude_alvo_ft,
+                    altura_comandamento_ft=altura_comandamento_ft,
+                    perda_comandamento_ft=perda_comandamento_ft,
+                    altura_saida_ft=altura_saida_ft,
                 )
 
-    texto_windgram = st.text_area(
-                "Cole aqui o Windgram textual",
-                height=260,
-                placeholder="Ex:\nFHR: + 0.\n700.mb 290@030\n750.mb 289@029\n800.mb 286@026",
-                key="windgram_texto",
-            )
+                resumo_velame = resumo_por_fase(df, "Velame aberto")
+                resumo_queda = resumo_por_fase(df, "Queda livre")
 
-    if st.button("Carregar Windgram e calcular", type="primary"):
-                registros, colunas = processar_windgram(texto_windgram)
+                st.session_state.df_windgram = df
+                st.session_state.resumo_velame = resumo_velame
+                st.session_state.resumo_queda = resumo_queda
+                st.session_state.declinacao_usada = declinacao
 
-                if not registros:
-                    st.error("Não consegui ler o Windgram. Cole linhas no formato: 700.mb 290@030")
-                else:
-                    if not colunas:
-                        colunas = list(registros[0]["valores"].keys())
-
-                    coluna = colunas[0]
-
-                    df = montar_dataframe_windgram(
-                        registros=registros,
-                        coluna=coluna,
-                        altitude_alvo_ft=altitude_alvo_ft,
-                        altura_comandamento_ft=altura_comandamento_ft,
-                        perda_comandamento_ft=perda_comandamento_ft,
-                        altura_saida_ft=altura_saida_ft,
+                if resumo_velame:
+                    st.session_state.vento_medio_velame = resumo_velame["vento_medio"]
+                    st.session_state.direcao_vento_verdadeira_kmz = float(
+                        resumo_velame.get(
+                            "direcao_ponderada",
+                            resumo_velame.get("direcao_media", 0.0)
+                        )
                     )
-
-                    resumo_velame = resumo_por_fase(df, "Velame aberto")
-                    resumo_queda = resumo_por_fase(df, "Queda livre")
-
-                    st.session_state.df_windgram = df
-                    st.session_state.resumo_velame = resumo_velame
-                    st.session_state.resumo_queda = resumo_queda
-                    st.session_state.declinacao_usada = declinacao
-
-                    if resumo_velame:
-                        st.session_state.vento_medio_velame = resumo_velame["vento_medio"]
-
-                        st.session_state.direcao_vento_verdadeira_kmz = float(
-                            resumo_velame.get(
-                                "direcao_ponderada",
-                                resumo_velame.get("direcao_media", 0.0)
-                            )
+                    st.session_state.direcao_media_velame = float(
+                        resumo_velame.get(
+                            "direcao_media_circular",
+                            resumo_velame.get("direcao_media", 0.0)
                         )
-
-                        st.session_state.direcao_media_velame = float(
-                            resumo_velame.get(
-                                "direcao_media_circular",
-                                resumo_velame.get("direcao_media", 0.0)
-                            )
-                        )
-                    st.success("Windgram processado com sucesso.")
+                    )
+                st.success("Windgram processado com sucesso.")
+        # -----------------------------------------------------------------
 
     with col_dir:
             st.subheader("Resultado")
