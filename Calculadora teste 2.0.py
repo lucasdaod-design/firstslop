@@ -1149,25 +1149,39 @@ with aba_planejamento:
     with col_esq:
         st.subheader("1. Alvo")
 
-        # --- NOVO: ZLs PRÉ-CADASTRADAS ---
-        zls_cadastradas = {
-            "Personalizado / Outro": None,
-            "Itograss": {"lat": -16.479218, "lon": -49.226422},
-            "Skydive Cerrado": {"lat": -16.362042, "lon": -48.928371}
-        }
-        
-        if zl_selecionada != "Personalizado / Outro" and st.session_state.get("ultima_zl_selecionada") != zl_selecionada:
-            st.session_state.lat = zls_cadastradas[zl_selecionada]["lat"]
-            st.session_state.lon = zls_cadastradas[zl_selecionada]["lon"]
-            st.session_state.localidade_alvo = zl_selecionada
-            st.session_state.centro_mapa = [st.session_state.lat, st.session_state.lon]
-            st.session_state.mapa_planejamento_rev += 1
-            st.session_state.ultima_zl_selecionada = zl_selecionada
+     # --- ZLs PRÉ-CADASTRADAS ---
+zls_cadastradas = {
+    "Personalizado / Outro": None,
+    "Itograss": {"lat": -16.479218, "lon": -49.226422},
+    "Skydive Cerrado": {"lat": -16.362042, "lon": -48.928371}
+}
 
-            st.rerun()
+if "ultima_zl_selecionada" not in st.session_state:
+    st.session_state.ultima_zl_selecionada = "Personalizado / Outro"
 
-        elif zl_selecionada == "Personalizado / Outro":
-            st.session_state.ultima_zl_selecionada = "Personalizado / Outro"
+    zl_selecionada = st.selectbox(
+        "Zonas de Lançamento Rápidas",
+        list(zls_cadastradas.keys()),
+        help="Selecione uma ZL salva para preencher as coordenadas e o mapa automaticamente.",
+        key="sel_zl_rapida"
+    )
+
+    if (
+        zl_selecionada != "Personalizado / Outro"
+        and st.session_state.ultima_zl_selecionada != zl_selecionada
+    ):
+        st.session_state.lat = zls_cadastradas[zl_selecionada]["lat"]
+        st.session_state.lon = zls_cadastradas[zl_selecionada]["lon"]
+        st.session_state.localidade_alvo = zl_selecionada
+        st.session_state.centro_mapa = [st.session_state.lat, st.session_state.lon]
+        st.session_state.mapa_planejamento_rev += 1
+        st.session_state.ultima_zl_selecionada = zl_selecionada
+
+        st.rerun()
+
+    elif zl_selecionada == "Personalizado / Outro":
+        st.session_state.ultima_zl_selecionada = "Personalizado / Outro"
+# ---------------------------------
         # ---------------------------------
 
         # Caixa para digitar o nome da ZL (agora atualizada pela seleção acima)
