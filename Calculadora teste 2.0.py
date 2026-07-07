@@ -1169,16 +1169,17 @@ with aba_planejamento:
             st.session_state.centro_mapa = [st.session_state.lat, st.session_state.lon]
             st.session_state.mapa_planejamento_rev += 1
             st.session_state.ultima_zl_selecionada = zl_selecionada
-            st.rerun()
+            # ❌ st.rerun() FOI EXTIRPADO DAQUI
+            
         elif zl_selecionada == "Personalizado / Outro":
             st.session_state.ultima_zl_selecionada = "Personalizado / Outro"
-        # ---------------------------------
 
-        # Caixa para digitar o nome da ZL (agora atualizada pela seleção acima)
+        # Caixa para digitar o nome da ZL (AGORA COM CHAVE DINÂMICA)
         localidade_alvo = st.text_input(
             "Localidade / Nome da ZL", 
             value=st.session_state.get("localidade_alvo", ""),
-            placeholder="Ex: ZL Boi Preto / Anápolis-GO"
+            placeholder="Ex: ZL Boi Preto / Anápolis-GO",
+            key=f"input_local_alvo_{st.session_state.mapa_planejamento_rev}"
         )
         st.session_state.localidade_alvo = localidade_alvo
 
@@ -1195,12 +1196,9 @@ with aba_planejamento:
                     st.session_state.lon = float(resultado["lon"])
                     st.session_state.centro_mapa = [st.session_state.lat, st.session_state.lon]
                     st.session_state.mapa_planejamento_rev += 1
-                    
-                    # MÁGICA: Preenche o nome da ZL sozinho se a pessoa usar a busca
                     st.session_state.localidade_alvo = resultado["nome"]
-                    
                     st.success(resultado["nome"])
-                    st.rerun()
+                    # ❌ st.rerun() FOI EXTIRPADO DAQUI TAMBÉM
                 else:
                     st.error("Local não encontrado.")
 
@@ -1218,12 +1216,11 @@ with aba_planejamento:
                 dec = calcular_declinacao(st.session_state.lat, st.session_state.lon, st.session_state.altitude_ft)
                 if dec is not None:
                     st.session_state.declinacao = dec
-                
+                    
             # Grava na memória para não rodar em loop
             st.session_state.last_lat_calc = st.session_state.lat
             st.session_state.last_lon_calc = st.session_state.lon
-            st.rerun()
-
+            # ❌ O ÚLTIMO st.rerun() FOI EXTIRPADO DAQUI!
         c1, c2, c3 = st.columns(3)
 
         with c1:
