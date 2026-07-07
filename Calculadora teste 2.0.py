@@ -1128,14 +1128,17 @@ st.caption(
     "Fluxo: selecionar ponto → abrir NOAA READY → colar Windgram → calcular dados auxiliares."
 )
 
-aba_planejamento, aba_calculos, aba_camadas, aba_dkva, aba_folder = st.tabs(
+aba_ativa = st.radio(
+    "Selecione a área:",
     [
         "Planejamento / Windgram",
         "Cálculo da Distância para Velame Aberto",
         "Calculadora dos Pontos de Controle",
         "Salto sobre o Alvo (DKVA)",
         "Folder do Piloto"
-    ]
+    ],
+    horizontal=True,
+    key="aba_ativa_principal"
 )
 
 
@@ -1143,7 +1146,7 @@ aba_planejamento, aba_calculos, aba_camadas, aba_dkva, aba_folder = st.tabs(
 # ABA PLANEJAMENTO
 # =====================================================
 
-with aba_planejamento:
+if aba_ativa == "Planejamento / Windgram":
     col_esq, col_dir = st.columns([1.15, 1])
 
     with col_esq:
@@ -1159,7 +1162,8 @@ with aba_planejamento:
         zl_selecionada = st.selectbox(
             "Zonas de Lançamento Rápidas", 
             list(zls_cadastradas.keys()),
-            help="Selecione uma ZL salva para preencher as coordenadas e o mapa automaticamente."
+            help="Selecione uma ZL salva para preencher as coordenadas e o mapa automaticamente.",
+            key="sel_zl_rapida"
         )
         
         if zl_selecionada != "Personalizado / Outro" and st.session_state.get("ultima_zl_selecionada") != zl_selecionada:
@@ -1169,17 +1173,15 @@ with aba_planejamento:
             st.session_state.centro_mapa = [st.session_state.lat, st.session_state.lon]
             st.session_state.mapa_planejamento_rev += 1
             st.session_state.ultima_zl_selecionada = zl_selecionada
-            # ❌ st.rerun() FOI EXTIRPADO DAQUI
-            
         elif zl_selecionada == "Personalizado / Outro":
             st.session_state.ultima_zl_selecionada = "Personalizado / Outro"
+        # ---------------------------------
 
-        # Caixa para digitar o nome da ZL (AGORA COM CHAVE DINÂMICA)
+        # Caixa para digitar o nome da ZL (agora atualizada pela seleção acima)
         localidade_alvo = st.text_input(
             "Localidade / Nome da ZL", 
             value=st.session_state.get("localidade_alvo", ""),
-            placeholder="Ex: ZL Boi Preto / Anápolis-GO",
-            key=f"input_local_alvo_{st.session_state.mapa_planejamento_rev}"
+            placeholder="Ex: ZL Boi Preto / Anápolis-GO"
         )
         st.session_state.localidade_alvo = localidade_alvo
 
@@ -1196,9 +1198,12 @@ with aba_planejamento:
                     st.session_state.lon = float(resultado["lon"])
                     st.session_state.centro_mapa = [st.session_state.lat, st.session_state.lon]
                     st.session_state.mapa_planejamento_rev += 1
+                    
+                    # MÁGICA: Preenche o nome da ZL sozinho se a pessoa usar a busca
                     st.session_state.localidade_alvo = resultado["nome"]
+                    
                     st.success(resultado["nome"])
-                    # ❌ st.rerun() FOI EXTIRPADO DAQUI TAMBÉM
+                    st.rerun()
                 else:
                     st.error("Local não encontrado.")
 
@@ -1216,11 +1221,11 @@ with aba_planejamento:
                 dec = calcular_declinacao(st.session_state.lat, st.session_state.lon, st.session_state.altitude_ft)
                 if dec is not None:
                     st.session_state.declinacao = dec
-                    
+                
             # Grava na memória para não rodar em loop
             st.session_state.last_lat_calc = st.session_state.lat
             st.session_state.last_lon_calc = st.session_state.lon
-            # ❌ O ÚLTIMO st.rerun() FOI EXTIRPADO DAQUI!
+
         c1, c2, c3 = st.columns(3)
 
         with c1:
@@ -1531,7 +1536,7 @@ with aba_planejamento:
 # ABA CÁLCULO DA DISTÂNCIA PARA VELAME ABERTO
 # =====================================================
 
-with aba_calculos:
+if aba_ativa == "Cálculo da Distância para Velame Aberto":
     st.subheader("Cálculo da Distância para Velame Aberto")
 
     st.info(
@@ -1970,7 +1975,7 @@ with aba_calculos:
 # ABA CALCULADORA DOS PONTOS DE CONTROLE
 # =====================================================
 
-with aba_camadas:
+if aba_ativa == "Calculadora dos Pontos de Controle":
     st.subheader("Calculadora dos Pontos de Controle")
 
     st.info(
@@ -2537,7 +2542,7 @@ with aba_camadas:
 # ABA SALTO SOBRE O ALVO (DKVA)
 # =====================================================
 
-with aba_dkva:
+if aba_ativa == "Salto sobre o Alvo (DKVA)":
     st.subheader("🎯 Planejamento para Saltos sobre o Alvo (DKVA)")
     st.info("Objetivo: Calcular a distância de lançamento (D) em metros usando a constante K=25.")
 
@@ -3036,7 +3041,7 @@ with aba_dkva:
 # ABA FOLDER DO PILOTO
 # =====================================================
 
-with aba_folder:
+if aba_ativa == "Folder do Piloto":
     st.subheader("📄 Folder do Piloto")
 
     if not DOCX_OK:
