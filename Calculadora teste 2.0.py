@@ -1170,7 +1170,6 @@ with aba_planejamento:
             st.session_state.centro_mapa = [st.session_state.lat, st.session_state.lon]
             st.session_state.mapa_planejamento_rev += 1
             st.session_state.ultima_zl_selecionada = zl_selecionada
-            st.rerun()
         elif zl_selecionada == "Personalizado / Outro":
             st.session_state.ultima_zl_selecionada = "Personalizado / Outro"
         # ---------------------------------
@@ -1721,7 +1720,6 @@ with aba_calculos:
         st.session_state.lon_aerodromo_partida = aeros_cadastrados_va[aero_selecionado_va]["lon"]
         st.session_state.mapa_aerodromo_rev += 1
         st.session_state.ultimo_aero_selecionado_va = aero_selecionado_va
-        st.rerun()
     elif aero_selecionado_va == "Personalizado / Outro":
         st.session_state.ultimo_aero_selecionado_va = "Personalizado / Outro"
     # ----------------------------------------
@@ -2938,7 +2936,6 @@ with aba_dkva:
         st.session_state.lon_aerodromo_partida = aeros_cadastrados_dkva[aero_selecionado_dkva]["lon"]
         st.session_state.mapa_aerodromo_rev += 1
         st.session_state.last_aero_sel_dkva = aero_selecionado_dkva
-        st.rerun()
 
     # O nome deste form foi mudado para evitar o conflito fatal!
     with st.form("form_busca_aero_dkva_novo"):
