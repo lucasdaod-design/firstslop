@@ -1306,6 +1306,7 @@ with aba_planejamento:
                 st.rerun()
 
     # --- MOVENDO TUDO PARA DENTRO DA COLUNA ESQUERDA (col_esq) ---
+        # --- INÍCIO DO BLOCO CORRIGIDO (TUDO DENTRO DA COLUNA ESQUERDA) ---
         st.divider()
         st.subheader("2. Parâmetros")
 
@@ -1344,7 +1345,7 @@ with aba_planejamento:
 
         st.subheader("3. Windgram / Dados de Vento")
 
-        st.info("💡 Aqui você deve copiar e colar o Windgrama com as três colunas que aparecem no NOAA, do jeito que elas aparecem!")
+        st.info("💡 Aqui você deve copiar e Colar o Windgrama com as três colunas que aparecem no NOAA, do jeito que elas aparecem! É só copiar e colar aqui!")
 
         st.link_button(
             "Abrir NOAA READY",
@@ -1361,7 +1362,7 @@ with aba_planejamento:
         with col_copy2:
             st.caption("Longitude:")
             st.code(f"{st.session_state.lon:.6f}")
-
+            
         with st.expander("Instruções rápidas"):
             st.markdown(
                 """
@@ -1428,6 +1429,7 @@ with aba_planejamento:
                         )
                     )
                 st.success("Windgram processado com sucesso.")
+        # --- FIM DO BLOCO CORRIGIDO ---
         # -----------------------------------------------------------------
 
     with col_dir:
