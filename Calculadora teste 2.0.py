@@ -1654,233 +1654,9 @@ if aba_ativa == "Cálculo da Distância para Velame Aberto":
         except Exception as e:
             st.error(str(e))
 
+    st.divider()
 
-       # -----------------------------
-    # AERÓDROMO
-    # -----------------------------
-
-    st.markdown("##### Aeródromo de partida")
-
-    # --- AERÓDROMOS PRÉ-CADASTRADOS (VELAME ABERTO) ---
-    aeros_cadastrados_va = {
-        "Personalizado / Outro": None,
-        "Aeródromo de Goiânia": {"lat": -16.630929, "lon": -49.217527},
-        "Skydive Cerrado": {"lat": -16.362042, "lon": -48.928371}
-    }
-    
-    aero_selecionado_va = st.selectbox(
-        "Aeródromos Conhecidos", 
-        list(aeros_cadastrados_va.keys()),
-        help="Selecione um aeródromo salvo para preencher as coordenadas e o mapa automaticamente.",
-        key="sel_aero_conhecido_va"
-    )
-    
-    if aero_selecionado_va != "Personalizado / Outro" and st.session_state.get("ultimo_aero_selecionado_va") != aero_selecionado_va:
-        st.session_state.lat_aerodromo_partida = aeros_cadastrados_va[aero_selecionado_va]["lat"]
-        st.session_state.lon_aerodromo_partida = aeros_cadastrados_va[aero_selecionado_va]["lon"]
-        st.session_state.mapa_aerodromo_rev += 1
-        st.session_state.ultimo_aero_selecionado_va = aero_selecionado_va
-        st.rerun()
-    elif aero_selecionado_va == "Personalizado / Outro":
-        st.session_state.ultimo_aero_selecionado_va = "Personalizado / Outro"
-    # --------------------------------------------------
-
-    with st.form("form_busca_aerodromo"):
-        busca_aerodromo = st.text_input(
-            "Buscar aeródromo/localidade de partida",
-            placeholder="Ex: Campo Grande MS, Anápolis, Goiânia, Base Aérea..."
-        )
-
-        buscar_aerodromo = st.form_submit_button("🔎 Buscar local do aeródromo")
-
-    if buscar_aerodromo:
-        if busca_aerodromo.strip():
-            resultado_aero = buscar_localidade(busca_aerodromo)
-
-            if resultado_aero:
-                st.session_state.lat_aerodromo_partida = float(resultado_aero["lat"])
-                st.session_state.lon_aerodromo_partida = float(resultado_aero["lon"])
-                st.session_state.mapa_aerodromo_rev += 1
-
-                st.success(
-                    f"{resultado_aero['nome']} | Fonte: {resultado_aero.get('fonte', 'Busca online')}"
-                )
-
-                st.rerun()
-
-            else:
-                st.error(
-                    "Aeródromo/localidade não encontrado. Tente escrever com o estado, exemplo: Campo Grande MS."
-                )
-
-    c_aero_lat, c_aero_lon = st.columns(2)
-
-    with c_aero_lat:
-        lat_aerodromo = st.number_input(
-            "Latitude do aeródromo de partida",
-            value=float(st.session_state.lat_aerodromo_partida),
-            step=0.0001,
-            format="%.6f",
-            key=f"lat_aerodromo_partida_input_{st.session_state.mapa_aerodromo_rev}"
-        )
-
-    with c_aero_lon:
-        lon_aerodromo = st.number_input(
-            "Longitude do aeródromo de partida",
-            value=float(st.session_state.lon_aerodromo_partida),
-            step=0.0001,
-            format="%.6f",
-            key=f"lon_aerodromo_partida_input_{st.session_state.mapa_aerodromo_rev}"
-        )
-
-    st.session_state.lat_aerodromo_partida = float(lat_aerodromo)
-    st.session_state.lon_aerodromo_partida = float(lon_aerodromo)
-
-    st.markdown("###### Selecionar aeródromo no mapa")
-
-    mapa_aerodromo = criar_mapa_base(
-        [
-            st.session_state.lat_aerodromo_partida,
-            st.session_state.lon_aerodromo_partida
-        ],
-        zoom=12
-    )
-
-    folium.Marker(
-        location=[
-            st.session_state.lat_aerodromo_partida,
-            st.session_state.lon_aerodromo_partida
-        ],
-        popup="Aeródromo de partida",
-        tooltip="Aeródromo de partida",
-        icon=folium.Icon(color="blue", icon="flag"),
-    ).add_to(mapa_aerodromo)
-
-    resultado_mapa_aerodromo = st_folium(
-        mapa_aerodromo,
-        width=None,
-        height=360,
-        key=f"mapa_aerodromo_{st.session_state.mapa_aerodromo_rev}",
-        returned_objects=["last_clicked"],
-    )
-
-    if resultado_mapa_aerodromo and resultado_mapa_aerodromo.get("last_clicked"):
-        lat_click_aero = float(resultado_mapa_aerodromo["last_clicked"]["lat"])
-        lon_click_aero = float(resultado_mapa_aerodromo["last_clicked"]["lng"])
-
-        novo_clique_aero = [
-            round(lat_click_aero, 7),
-            round(lon_click_aero, 7)
-        ]
-
-        if st.session_state.ultimo_clique_aerodromo != novo_clique_aero:
-            st.session_state.ultimo_clique_aerodromo = novo_clique_aero
-            st.session_state.lat_aerodromo_partida = lat_click_aero
-            st.session_state.lon_aerodromo_partida = lon_click_aero
-            st.session_state.mapa_aerodromo_rev += 1
-            st.rerun()
-
-    st.caption(
-        f"Aeródromo selecionado: "
-        f"{st.session_state.lat_aerodromo_partida:.6f}, "
-        f"{st.session_state.lon_aerodromo_partida:.6f}"
-    )
-    # -----------------------------
-    # BOTÕES
-    # -----------------------------
-
-    b1, b2 = st.columns(2)
-
-    with b1:
-        consultar_ps = st.button(
-            "🌎 Consultar altitude e DAA/QFE do PS",
-            key="btn_consultar_ambiente_ps"
-        )
-
-    with b2:
-        calcular_altimetria = st.button(
-            "🧮 Calcular Diferença Altimétrica",
-            key="btn_calcular_diferenca_altimetrica"
-        )
-
-    if consultar_ps:
-        if not ps_disponivel:
-            st.error("PS ainda não registrado. Gere o KMZ primeiro ou registre o PS.")
-        else:
-            with st.spinner("📍 Consultando satélites meteorológicos..."):
-                altitude_ps_ft, qfe_ps_hpa = consultar_terreno_e_pressao(lat_consulta, lon_consulta)
-                
-                if altitude_ps_ft is not None:
-                    st.session_state.altitude_consulta_ft = altitude_ps_ft
-                if qfe_ps_hpa is not None:
-                    st.session_state.qfe_consulta_hpa = qfe_ps_hpa
-
-    if calcular_altimetria:
-        altitude_aerodromo_ft, _ = consultar_terreno_e_pressao(
-            lat_aerodromo,
-            lon_aerodromo
-        )
-
-        altitude_alvo_ft_ref = float(st.session_state.get("altitude_ft", 0.0))
-
-        st.session_state.altitude_aerodromo_partida_ft = altitude_aerodromo_ft
-
-        if altitude_aerodromo_ft is not None:
-            st.session_state.altimetro_aerodromo_alvo_ft = (
-                altitude_aerodromo_ft - altitude_alvo_ft_ref
-            )
-        else:
-            st.session_state.altimetro_aerodromo_alvo_ft = None
-
-    # -----------------------------
-    # RESULTADOS
-    # -----------------------------
-
-    r1, r2 = st.columns(2)
-
-    with r1:
-        altitude_consulta_ft = st.session_state.get("altitude_consulta_ft")
-
-        if altitude_consulta_ft is not None:
-            st.metric(
-                "Altitude do terreno no PS",
-                f"{altitude_consulta_ft:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", ".")
-            )
-        else:
-            st.metric("Altitude do terreno no PS", "—")
-
-    with r2:
-        qfe_consulta_hpa = st.session_state.get("qfe_consulta_hpa")
-
-        if qfe_consulta_hpa is not None:
-            st.metric("DAA / QFE no PS", f"{qfe_consulta_hpa:.1f} hPa")
-        else:
-            st.metric("DAA / QFE no PS", "—")
-
-    r3, r4 = st.columns(2)
-
-    with r3:
-        altitude_aerodromo_ft = st.session_state.get("altitude_aerodromo_partida_ft")
-
-        if altitude_aerodromo_ft is not None:
-            st.metric(
-                "Altitude do aeródromo de partida",
-                f"{altitude_aerodromo_ft:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", ".")
-            )
-        else:
-            st.metric("Altitude do aeródromo de partida", "—")
-
-    with r4:
-        altimetro_ft = st.session_state.get("altimetro_aerodromo_alvo_ft")
-
-        if altimetro_ft is not None:
-            st.metric(
-                "Diferença Altimétrica",
-                f"{altimetro_ft:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", ".")
-            )
-            st.caption("Altitude do aeródromo de partida - altitude do alvo")
-        else:
-            st.metric("Diferença Altimétrica", "—")
+    st.markdown("#### 📍 Consulta do PS e Aeródromo")
 
     st.caption("Fonte de consulta: Open-Meteo Elevation API e Open-Meteo Forecast Surface Pressure.")    
     with st.expander("Salvar novo perfil"):
@@ -2170,59 +1946,123 @@ if aba_ativa == "Calculadora dos Pontos de Controle":
         if st.button("🗑️ Limpar Todos os Pontos"):
             st.session_state.pontos_controle = []
             st.rerun()
-
-        st.divider()
-    st.markdown("#### 📍 Consulta do PS e Aeródromo")
-
-    # -----------------------------
-    # PS
-    # -----------------------------
-
-    ps_disponivel = "ps_lat" in st.session_state and "ps_lon" in st.session_state
-
-    if not ps_disponivel:
-        st.warning(
-            "Coordenada do PS ainda não registrada. "
-            "Gere o KMZ ou registre o PS antes de consultar altitude e DAA/QFE do PS."
-        )
-    else:
-        lat_padrao_consulta = float(st.session_state.ps_lat)
-        lon_padrao_consulta = float(st.session_state.ps_lon)
-
-        st.markdown("##### Ponto de Saída")
-
-        c_ps_lat, c_ps_lon = st.columns(2)
-
-        with c_ps_lat:
-            lat_consulta = st.number_input(
-                "Latitude do PS",
-                value=lat_padrao_consulta,
-                step=0.0001,
-                format="%.6f",
-                key=f"lat_consulta_ps_{round(lat_padrao_consulta, 6)}"
-            )
-
-        with c_ps_lon:
-            lon_consulta = st.number_input(
-                "Longitude do PS",
-                value=lon_padrao_consulta,
-                step=0.0001,
-                format="%.6f",
-                key=f"lon_consulta_ps_{round(lon_padrao_consulta, 6)}"
-            )
-
-        st.success("Coordenada do PS carregada automaticamente.")
-        st.caption(
-            f"PS: {lat_consulta:.6f}, {lon_consulta:.6f} | "
-            f"Origem: {st.session_state.get('ps_origem', 'não informada')}"
-        )
-
     # -----------------------------
     # EXPORTAÇÃO KMZ (GERAL / VELAME ABERTO)
     # -----------------------------
     st.divider()
     st.markdown("### 🌍 Exportar Planejamento (Google Earth)")
 
+# =====================================================
+    # NOVO PAINEL TÁTICO: PS, AERÓDROMO E DAA
+    # =====================================================
+    st.divider()
+    st.markdown("### 📍 Dados do PS e Aeródromo")
+
+    # A variável ps_disponivel agora é declarada aqui, blindando contra o NameError!
+    ps_disponivel = "ps_lat" in st.session_state and "ps_lon" in st.session_state
+
+    # 1. PONTO DE SAÍDA (PS)
+    st.markdown("#### Ponto de Saída")
+    if not ps_disponivel:
+        st.warning("Gere o KMZ da missão para traçar o Ponto de Saída automaticamente.")
+        lat_consulta = 0.0
+        lon_consulta = 0.0
+    else:
+        lat_consulta = float(st.session_state.ps_lat)
+        lon_consulta = float(st.session_state.ps_lon)
+        c_ps_lat, c_ps_lon = st.columns(2)
+        with c_ps_lat:
+            st.number_input("Latitude do PS", value=lat_consulta, format="%.6f", disabled=True, key="lat_ps_view")
+        with c_ps_lon:
+            st.number_input("Longitude do PS", value=lon_consulta, format="%.6f", disabled=True, key="lon_ps_view")
+        st.caption(f"Origem: {st.session_state.get('ps_origem', 'Automático do KMZ')}")
+
+    # 2. AERÓDROMO DE PARTIDA
+    st.markdown("#### Aeródromo de partida")
+    aeros_cadastrados_pc = {
+        "Personalizado / Outro": None,
+        "Aeródromo de Goiânia": {"lat": -16.630929, "lon": -49.217527},
+        "Skydive Cerrado": {"lat": -16.362042, "lon": -48.928371}
+    }
+    
+    aero_selec_pc = st.selectbox("Aeródromos Conhecidos", list(aeros_cadastrados_pc.keys()), key="sel_aero_pc")
+    if aero_selec_pc != "Personalizado / Outro" and st.session_state.get("last_aero_pc") != aero_selec_pc:
+        st.session_state.lat_aerodromo_partida = aeros_cadastrados_pc[aero_selec_pc]["lat"]
+        st.session_state.lon_aerodromo_partida = aeros_cadastrados_pc[aero_selec_pc]["lon"]
+        st.session_state.last_aero_pc = aero_selec_pc
+        st.rerun()
+    elif aero_selec_pc == "Personalizado / Outro":
+        st.session_state.last_aero_pc = "Personalizado / Outro"
+
+    with st.form("form_busca_aero_pc"):
+        busca_aero_pc = st.text_input("Buscar aeródromo por nome")
+        if st.form_submit_button("🔎 Buscar"):
+            res = buscar_localidade(busca_aero_pc)
+            if res:
+                st.session_state.lat_aerodromo_partida = float(res["lat"])
+                st.session_state.lon_aerodromo_partida = float(res["lon"])
+                st.success(res["nome"])
+                st.rerun()
+
+    c_aero_lat, c_aero_lon = st.columns(2)
+    with c_aero_lat:
+        lat_aerodromo = st.number_input("Latitude", value=float(st.session_state.lat_aerodromo_partida), format="%.6f", key="lat_aero_pc")
+    with c_aero_lon:
+        lon_aerodromo = st.number_input("Longitude", value=float(st.session_state.lon_aerodromo_partida), format="%.6f", key="lon_aero_pc")
+    
+    st.session_state.lat_aerodromo_partida = lat_aerodromo
+    st.session_state.lon_aerodromo_partida = lon_aerodromo
+
+    # 3. BOTÕES DE CÁLCULO
+    b1, b2 = st.columns(2)
+    if b1.button("🌎 Consultar DAA/QFE do PS", type="primary"):
+        if not ps_disponivel:
+            st.error("Gere o KMZ primeiro para ter a coordenada do PS.")
+        else:
+            with st.spinner("Conectando aos satélites..."):
+                alt_ps_ft, qfe_ps_hpa = consultar_terreno_e_pressao(lat_consulta, lon_consulta)
+                if alt_ps_ft is not None:
+                    st.session_state.altitude_consulta_ft = alt_ps_ft
+                if qfe_ps_hpa is not None:
+                    st.session_state.qfe_consulta_hpa = qfe_ps_hpa
+
+    if b2.button("🧮 Calcular Diferença Altimétrica"):
+        with st.spinner("Calculando terreno do aeródromo..."):
+            alt_aero_ft, _ = consultar_terreno_e_pressao(lat_aerodromo, lon_aerodromo)
+            alt_alvo_ref = float(st.session_state.get("altitude_ft", 0.0))
+            if alt_aero_ft is not None:
+                st.session_state.altitude_aerodromo_partida_ft = alt_aero_ft
+                st.session_state.altimetro_aerodromo_alvo_ft = alt_aero_ft - alt_alvo_ref
+
+    # 4. PAINEL DE RESULTADOS (Sincronizado com o Folder)
+    r1, r2 = st.columns(2)
+    val_alt = st.session_state.get("altitude_consulta_ft")
+    if val_alt is not None:
+        r1.metric("Altitude do terreno no PS", f"{val_alt:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", "."))
+    else:
+        r1.metric("Altitude do terreno no PS", "—")
+    
+    val_qfe = st.session_state.get("qfe_consulta_hpa")
+    if val_qfe is not None:
+        r2.metric("DAA / QFE no PS", f"{val_qfe:.1f} hPa")
+    else:
+        r2.metric("DAA / QFE no PS", "—")
+
+    r3, r4 = st.columns(2)
+    val_alt_aero = st.session_state.get("altitude_aerodromo_partida_ft")
+    if val_alt_aero is not None:
+        r3.metric("Altitude do Aeródromo", f"{val_alt_aero:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", "."))
+    else:
+        r3.metric("Altitude do Aeródromo", "—")
+
+    val_dif = st.session_state.get("altimetro_aerodromo_alvo_ft")
+    if val_dif is not None:
+        r4.metric("Diferença Altimétrica", f"{val_dif:,.0f} ft".replace(",", "X").replace(".", ",").replace("X", "."))
+        st.caption("Altitude aeródromo - alvo")
+    else:
+        r4.metric("Diferença Altimétrica", "—")
+    st.caption("Fonte: Open-Meteo Elevation/Forecast API.")
+    # =====================================================
     if st.session_state.get("df_windgram") is not None and st.session_state.get("distancia_velame_aberto_nm", 0) > 0:
         
         tipo_lancamento = st.radio(
