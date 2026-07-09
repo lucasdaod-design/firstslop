@@ -538,13 +538,24 @@ def buscar_altitude(lat, lon):
 def consultar_terreno_e_pressao(lat, lon):
     altitude_ft = None
     qfe_hpa = None
-    
-    # O "Crachá de Identificação" para não sermos bloqueados pela API
+
+    # Limpa debug anterior
+    st.session_state.qfe_erro_debug = ""
+    st.session_state.qfe_fonte = ""
+
     headers = {"User-Agent": "CalculadoraPQD/2.0"}
 
-    # 1. Tentativa principal de elevação (Open-Meteo)
+    # =====================================================
+    # 1. ALTITUDE DO TERRENO
+    # Plano A: Open-Meteo Elevation
+    # Plano B: Open-Elevation
+    # =====================================================
     try:
-        url_elev = f"https://api.open-meteo.com/v1/elevation?latitude={lat}&longitude={lon}"
+        url_elev = (
+            "https://api.open-meteo.com/v1/elevation"
+            f"?latitude={lat}&longitude={lon}"
+        )
+
         resp_elev = requests.get(url_elev, headers=headers, timeout=8)
         resp_elev.raise_for_status()
         dados_elev = resp_elev.json()
@@ -552,23 +563,34 @@ def consultar_terreno_e_pressao(lat, lon):
         if "elevation" in dados_elev and len(dados_elev["elevation"]) > 0:
             altitude_m = float(dados_elev["elevation"][0])
             altitude_ft = m_para_ft(altitude_m)
+
     except Exception:
-        # PLANO B: Se o Open-Meteo falhar, usa o Open-Elevation
         try:
-            url_fb = f"https://api.open-elevation.com/api/v1/lookup?locations={lat},{lon}"
+            url_fb = (
+                "https://api.open-elevation.com/api/v1/lookup"
+                f"?locations={lat},{lon}"
+            )
+
             resp_fb = requests.get(url_fb, headers=headers, timeout=8)
             resp_fb.raise_for_status()
             dados_fb = resp_fb.json()
-            altitude_ft = m_para_ft(float(dados_fb["results"][0]["elevation"]))
+
+            altitude_m = float(dados_fb["results"][0]["elevation"])
+            altitude_ft = m_para_ft(altitude_m)
+
         except Exception:
             altitude_ft = None
 
-    # 2. Busca de pressão QFE (Open-Meteo)
+    # =====================================================
+    # 2. DAA / QFE
+    # Plano A: surface_pressure direto
+    # Plano B: pressure_msl + altitude do terreno
+    # =====================================================
     try:
         url_pressao = (
             "https://api.open-meteo.com/v1/forecast"
             f"?latitude={lat}&longitude={lon}"
-            "&current=surface_pressure"
+            "&current=surface_pressure,pressure_msl"
             "&forecast_days=1"
             "&timezone=auto"
         )
@@ -577,25 +599,37 @@ def consultar_terreno_e_pressao(lat, lon):
         resp_pressao.raise_for_status()
         dados_pressao = resp_pressao.json()
 
-        valor_qfe = (
-            dados_pressao
-            .get("current", {})
-            .get("surface_pressure")
-        )
+        atual = dados_pressao.get("current", {})
 
-        if valor_qfe is not None:
-            qfe_hpa = float(valor_qfe)
-            st.session_state.qfe_erro_debug = ""
+        # PLANO A: QFE direto
+        valor_surface = atual.get("surface_pressure")
+
+        if valor_surface is not None:
+            qfe_hpa = float(valor_surface)
+            st.session_state.qfe_fonte = "Open-Meteo surface_pressure"
+
         else:
-            qfe_hpa = None
-            st.session_state.qfe_erro_debug = str(dados_pressao)
+            # PLANO B: estima QFE usando pressão ao nível do mar + altitude
+            valor_msl = atual.get("pressure_msl")
+
+            if valor_msl is not None and altitude_ft is not None:
+                pressao_msl_hpa = float(valor_msl)
+                altitude_m = altitude_ft / 3.28084
+
+                # Fórmula barométrica aproximada para converter pressão MSL em pressão local
+                qfe_hpa = pressao_msl_hpa * (1 - 2.25577e-5 * altitude_m) ** 5.25588
+
+                st.session_state.qfe_fonte = "Estimado por pressure_msl + altitude"
+
+            else:
+                qfe_hpa = None
+                st.session_state.qfe_erro_debug = str(dados_pressao)
 
     except Exception as e:
         qfe_hpa = None
         st.session_state.qfe_erro_debug = str(e)
 
     return altitude_ft, qfe_hpa
-
 def calcular_declinacao(lat, lon, altitude_ft):
     if not GEOMAG_OK:
         return None
@@ -1880,17 +1914,28 @@ if aba_ativa == "Cálculo da Distância para Velame Aberto":
                 
                 if altitude_ps_ft is None and qfe_ps_hpa is None:
                     st.error("❌ Falha total na consulta: não foi possível obter altitude nem DAA/QFE.")
+
                 elif altitude_ps_ft is not None and qfe_ps_hpa is None:
                     st.warning(
                         "⚠️ Altitude atualizada, mas o DAA/QFE não foi retornado pela API meteorológica. "
                         "Tente novamente em alguns segundos."
                     )
+
                 elif altitude_ps_ft is None and qfe_ps_hpa is not None:
                     st.warning(
                         "⚠️ DAA/QFE atualizado, mas a altitude do terreno não foi retornada."
                     )
+
                 else:
-                    st.success("✅ Altitude e DAA/QFE atualizados na tela!")
+                    fonte_qfe = st.session_state.get("qfe_fonte", "")
+
+                    if "Estimado" in fonte_qfe:
+                        st.warning(
+                            f"⚠️ Altitude atualizada e DAA/QFE estimado. Fonte: {fonte_qfe}. "
+                            "Confira com fonte oficial antes de usar."
+                        )
+                    else:
+                        st.success(f"✅ Altitude e DAA/QFE atualizados na tela! Fonte: {fonte_qfe}")
 
     if calcular_altimetria:
         with st.spinner("📍 Calculando diferença altimétrica do aeródromo..."):
