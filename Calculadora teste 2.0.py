@@ -1852,13 +1852,13 @@ if aba_ativa == "Cálculo da Distância para Velame Aberto":
         if not ps_disponivel:
             st.error("PS ainda não registrado. Gere o KMZ primeiro ou registre o PS.")
         else:
-            altitude_ps_ft, qfe_ps_hpa = consultar_terreno_e_pressao(
-                lat_consulta,
-                lon_consulta
-            )
-
-            st.session_state.altitude_consulta_ft = altitude_ps_ft
-            st.session_state.qfe_consulta_hpa = qfe_ps_hpa
+            with st.spinner("📍 Consultando satélites meteorológicos..."):
+                altitude_ps_ft, qfe_ps_hpa = consultar_terreno_e_pressao(lat_consulta, lon_consulta)
+                
+                if altitude_ps_ft is not None:
+                    st.session_state.altitude_consulta_ft = altitude_ps_ft
+                if qfe_ps_hpa is not None:
+                    st.session_state.qfe_consulta_hpa = qfe_ps_hpa
 
     if calcular_altimetria:
         altitude_aerodromo_ft, _ = consultar_terreno_e_pressao(
@@ -2435,6 +2435,14 @@ if aba_ativa == "Calculadora dos Pontos de Controle":
 
             st.session_state.ps_lat = lat_ps_final
             st.session_state.ps_lon = lon_ps_final
+
+            # --- NOVO: AUTO-CALCULAR ALTITUDE E DAA NO MOMENTO DO KMZ ---
+            with st.spinner("📍 Consultando Altitude e DAA do Ponto de Saída Final..."):
+                alt_ps_ft, qfe_hpa = consultar_terreno_e_pressao(lat_ps_final, lon_ps_final)
+                if alt_ps_ft is not None:
+                    st.session_state.altitude_consulta_ft = alt_ps_ft
+                if qfe_hpa is not None:
+                    st.session_state.qfe_consulta_hpa = qfe_hpa
 
             # === MÁGICA: CÁLCULO E TRAÇADO DO 1' FORA ===
             dist_1_fora_km = (velocidade_anv_kmz * 60) / 1000.0
