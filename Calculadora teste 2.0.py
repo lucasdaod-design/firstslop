@@ -538,43 +538,44 @@ def buscar_altitude(lat, lon):
 def consultar_terreno_e_pressao(lat, lon):
     altitude_ft = None
     qfe_hpa = None
+    
+    # O "Crachá de Identificação" para não sermos bloqueados pela API
+    headers = {"User-Agent": "CalculadoraPQD/2.0"}
 
+    # 1. Tentativa principal de elevação (Open-Meteo)
     try:
-        url_elev = (
-            "https://api.open-meteo.com/v1/elevation"
-            f"?latitude={lat}&longitude={lon}"
-        )
-
-        resp_elev = requests.get(url_elev, timeout=10)
+        url_elev = f"https://api.open-meteo.com/v1/elevation?latitude={lat}&longitude={lon}"
+        resp_elev = requests.get(url_elev, headers=headers, timeout=8)
         resp_elev.raise_for_status()
         dados_elev = resp_elev.json()
 
         if "elevation" in dados_elev and len(dados_elev["elevation"]) > 0:
             altitude_m = float(dados_elev["elevation"][0])
             altitude_ft = m_para_ft(altitude_m)
-
     except Exception:
-        altitude_ft = None
+        # PLANO B: Se o Open-Meteo falhar, usa o Open-Elevation
+        try:
+            url_fb = f"https://api.open-elevation.com/api/v1/lookup?locations={lat},{lon}"
+            resp_fb = requests.get(url_fb, headers=headers, timeout=8)
+            resp_fb.raise_for_status()
+            dados_fb = resp_fb.json()
+            altitude_ft = m_para_ft(float(dados_fb["results"][0]["elevation"]))
+        except Exception:
+            altitude_ft = None
 
+    # 2. Busca de pressão QFE (Open-Meteo)
     try:
-        url_pressao = (
-            "https://api.open-meteo.com/v1/forecast"
-            f"?latitude={lat}&longitude={lon}"
-            "&current=surface_pressure"
-        )
-
-        resp_pressao = requests.get(url_pressao, timeout=10)
+        url_pressao = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=surface_pressure"
+        resp_pressao = requests.get(url_pressao, headers=headers, timeout=8)
         resp_pressao.raise_for_status()
         dados_pressao = resp_pressao.json()
 
         if "current" in dados_pressao and "surface_pressure" in dados_pressao["current"]:
             qfe_hpa = float(dados_pressao["current"]["surface_pressure"])
-
     except Exception:
         qfe_hpa = None
 
     return altitude_ft, qfe_hpa
-
 
 def calcular_declinacao(lat, lon, altitude_ft):
     if not GEOMAG_OK:
@@ -2660,28 +2661,13 @@ if aba_ativa == "Salto sobre o Alvo (DKVA)":
             st.markdown("#### 📍 Dados Atmosféricos do Ponto de Saída (PS)")
             
             with st.spinner("A consultar a base de dados meteorológica (QFE e Altitude)..."):
-                alt_ps_ft = 0.0
-                qfe_hpa = 0.0
+                # Agora o DKVA usa a função blindada com crachá e plano B!
+                alt_ps_ft, qfe_hpa = consultar_terreno_e_pressao(lat_pl, lon_pl)
                 
-                try:
-                    # 1. Busca a Elevação Exata pura (em metros) e converte para pés
-                    url_elev = f"https://api.open-meteo.com/v1/elevation?latitude={lat_pl}&longitude={lon_pl}"
-                    resp_elev = requests.get(url_elev, timeout=5).json()
-                    
-                    if "elevation" in resp_elev and len(resp_elev["elevation"]) > 0:
-                        alt_ps_m = float(resp_elev["elevation"][0])
-                        alt_ps_ft = alt_ps_m * 3.28084
-                    
-                    # 2. Busca a Pressão Superficial (QFE) exata do Ponto de Saída
-                    url_clima = f"https://api.open-meteo.com/v1/forecast?latitude={lat_pl}&longitude={lon_pl}&current=surface_pressure"
-                    resp_clima = requests.get(url_clima, timeout=5).json()
-                    
-                    if "current" in resp_clima and "surface_pressure" in resp_clima["current"]:
-                        qfe_hpa = float(resp_clima["current"]["surface_pressure"])
-                        
-                except Exception:
-                    pass
-            
+                if alt_ps_ft is None:
+                    alt_ps_ft = 0.0
+                if qfe_hpa is None:
+                    qfe_hpa = 0.0            
             # --- MÁGICA DA INTEGRAÇÃO COM O FOLDER DO PILOTO ---
             # Salva os dados recém-calculados do DKVA nas mesmas variáveis globais que o Folder lê!
             if alt_ps_ft > 0:
