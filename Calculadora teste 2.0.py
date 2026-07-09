@@ -539,7 +539,6 @@ def consultar_terreno_e_pressao(lat, lon):
     altitude_ft = None
     qfe_hpa = None
 
-    # Limpa debug anterior
     st.session_state.qfe_erro_debug = ""
     st.session_state.qfe_fonte = ""
 
@@ -578,56 +577,104 @@ def consultar_terreno_e_pressao(lat, lon):
             altitude_m = float(dados_fb["results"][0]["elevation"])
             altitude_ft = m_para_ft(altitude_m)
 
-        except Exception:
+        except Exception as e:
             altitude_ft = None
+            st.session_state.qfe_erro_debug += f"\nErro altitude: {str(e)}"
+
+    # Função auxiliar para estimar QFE a partir da pressão MSL
+    def estimar_qfe_por_msl(pressao_msl_hpa, altitude_ft_ref):
+        altitude_m = altitude_ft_ref / 3.28084
+        return pressao_msl_hpa * (1 - 2.25577e-5 * altitude_m) ** 5.25588
 
     # =====================================================
-    # 2. DAA / QFE
-    # Plano A: surface_pressure direto
-    # Plano B: pressure_msl + altitude do terreno
+    # 2. PLANO A — QFE DIRETO: surface_pressure
     # =====================================================
     try:
-        url_pressao = (
+        url_surface = (
             "https://api.open-meteo.com/v1/forecast"
             f"?latitude={lat}&longitude={lon}"
-            "&current=surface_pressure,pressure_msl"
+            "&current=surface_pressure"
             "&forecast_days=1"
             "&timezone=auto"
         )
 
-        resp_pressao = requests.get(url_pressao, headers=headers, timeout=8)
-        resp_pressao.raise_for_status()
-        dados_pressao = resp_pressao.json()
+        resp_surface = requests.get(url_surface, headers=headers, timeout=8)
+        resp_surface.raise_for_status()
+        dados_surface = resp_surface.json()
 
-        atual = dados_pressao.get("current", {})
-
-        # PLANO A: QFE direto
-        valor_surface = atual.get("surface_pressure")
+        valor_surface = dados_surface.get("current", {}).get("surface_pressure")
 
         if valor_surface is not None:
             qfe_hpa = float(valor_surface)
-            st.session_state.qfe_fonte = "Open-Meteo surface_pressure"
-
+            st.session_state.qfe_fonte = "Open-Meteo surface_pressure direto"
+            return altitude_ft, qfe_hpa
         else:
-            # PLANO B: estima QFE usando pressão ao nível do mar + altitude
-            valor_msl = atual.get("pressure_msl")
-
-            if valor_msl is not None and altitude_ft is not None:
-                pressao_msl_hpa = float(valor_msl)
-                altitude_m = altitude_ft / 3.28084
-
-                # Fórmula barométrica aproximada para converter pressão MSL em pressão local
-                qfe_hpa = pressao_msl_hpa * (1 - 2.25577e-5 * altitude_m) ** 5.25588
-
-                st.session_state.qfe_fonte = "Estimado por pressure_msl + altitude"
-
-            else:
-                qfe_hpa = None
-                st.session_state.qfe_erro_debug = str(dados_pressao)
+            st.session_state.qfe_erro_debug += f"\nPlano A sem surface_pressure: {dados_surface}"
 
     except Exception as e:
-        qfe_hpa = None
-        st.session_state.qfe_erro_debug = str(e)
+        st.session_state.qfe_erro_debug += f"\nErro Plano A surface_pressure: {str(e)}"
+
+    # =====================================================
+    # 3. PLANO B — pressure_msl atual + altitude
+    # =====================================================
+    try:
+        url_msl = (
+            "https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            "&current=pressure_msl"
+            "&forecast_days=1"
+            "&timezone=auto"
+        )
+
+        resp_msl = requests.get(url_msl, headers=headers, timeout=8)
+        resp_msl.raise_for_status()
+        dados_msl = resp_msl.json()
+
+        valor_msl = dados_msl.get("current", {}).get("pressure_msl")
+
+        if valor_msl is not None and altitude_ft is not None:
+            qfe_hpa = estimar_qfe_por_msl(float(valor_msl), altitude_ft)
+            st.session_state.qfe_fonte = "Estimado por pressure_msl atual + altitude"
+            return altitude_ft, qfe_hpa
+        else:
+            st.session_state.qfe_erro_debug += f"\nPlano B sem pressure_msl atual: {dados_msl}"
+
+    except Exception as e:
+        st.session_state.qfe_erro_debug += f"\nErro Plano B pressure_msl atual: {str(e)}"
+
+    # =====================================================
+    # 4. PLANO C — hourly pressure_msl + altitude
+    # =====================================================
+    try:
+        url_hourly = (
+            "https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            "&hourly=pressure_msl"
+            "&forecast_days=1"
+            "&timezone=auto"
+        )
+
+        resp_hourly = requests.get(url_hourly, headers=headers, timeout=8)
+        resp_hourly.raise_for_status()
+        dados_hourly = resp_hourly.json()
+
+        lista_msl = dados_hourly.get("hourly", {}).get("pressure_msl", [])
+
+        valor_msl_hourly = None
+        for item in lista_msl:
+            if item is not None:
+                valor_msl_hourly = float(item)
+                break
+
+        if valor_msl_hourly is not None and altitude_ft is not None:
+            qfe_hpa = estimar_qfe_por_msl(valor_msl_hourly, altitude_ft)
+            st.session_state.qfe_fonte = "Estimado por hourly pressure_msl + altitude"
+            return altitude_ft, qfe_hpa
+        else:
+            st.session_state.qfe_erro_debug += f"\nPlano C sem hourly pressure_msl: {dados_hourly}"
+
+    except Exception as e:
+        st.session_state.qfe_erro_debug += f"\nErro Plano C hourly pressure_msl: {str(e)}"
 
     return altitude_ft, qfe_hpa
 def calcular_declinacao(lat, lon, altitude_ft):
@@ -1917,9 +1964,13 @@ if aba_ativa == "Cálculo da Distância para Velame Aberto":
 
                 elif altitude_ps_ft is not None and qfe_ps_hpa is None:
                     st.warning(
-                        "⚠️ Altitude atualizada, mas o DAA/QFE não foi retornado pela API meteorológica. "
-                        "Tente novamente em alguns segundos."
+                        "⚠️ Altitude atualizada, mas o DAA/QFE não foi retornado nem pelo Plano A, nem pelo Plano B. "
+                        "Veja o debug abaixo."
                     )
+
+                    if st.session_state.get("qfe_erro_debug"):
+                        with st.expander("🔎 Debug do DAA/QFE"):
+                            st.code(st.session_state.qfe_erro_debug)
 
                 elif altitude_ps_ft is None and qfe_ps_hpa is not None:
                     st.warning(
@@ -1932,7 +1983,6 @@ if aba_ativa == "Cálculo da Distância para Velame Aberto":
                     if "Estimado" in fonte_qfe:
                         st.warning(
                             f"⚠️ Altitude atualizada e DAA/QFE estimado. Fonte: {fonte_qfe}. "
-                            "Confira com fonte oficial antes de usar."
                         )
                     else:
                         st.success(f"✅ Altitude e DAA/QFE atualizados na tela! Fonte: {fonte_qfe}")
