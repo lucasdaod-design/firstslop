@@ -1830,8 +1830,8 @@ if aba_ativa == "Cálculo da Distância para Velame Aberto":
         f"{st.session_state.lat_aerodromo_partida:.6f}, "
         f"{st.session_state.lon_aerodromo_partida:.6f}"
     )
-    # -----------------------------
-    # BOTÕES
+# -----------------------------
+    # BOTÕES BLINDADOS
     # -----------------------------
 
     b1, b2 = st.columns(2)
@@ -1850,32 +1850,33 @@ if aba_ativa == "Cálculo da Distância para Velame Aberto":
 
     if consultar_ps:
         if not ps_disponivel:
-            st.error("PS ainda não registrado. Gere o KMZ primeiro ou registre o PS.")
+            st.error("⚠️ PS não registrado. Clique no botão 'Calcular D' logo acima para traçar o PS.")
         else:
-            with st.spinner("📍 Consultando satélites meteorológicos..."):
+            with st.spinner("📍 Extraindo dados meteorológicos do satélite..."):
                 altitude_ps_ft, qfe_ps_hpa = consultar_terreno_e_pressao(lat_consulta, lon_consulta)
                 
-                if altitude_ps_ft is not None:
-                    st.session_state.altitude_consulta_ft = altitude_ps_ft
-                if qfe_ps_hpa is not None:
-                    st.session_state.qfe_consulta_hpa = qfe_ps_hpa
+                # Força a gravação na memória. Se o satélite falhar, grava None e a gente descobre na hora.
+                st.session_state.altitude_consulta_ft = altitude_ps_ft
+                st.session_state.qfe_consulta_hpa = qfe_ps_hpa
+                
+                if altitude_ps_ft is None and qfe_ps_hpa is None:
+                    st.error("❌ Falha de comunicação com o servidor meteorológico (Open-Meteo). Tente novamente.")
+                else:
+                    st.success("✅ DAA e Altitude atualizados na tela!")
 
     if calcular_altimetria:
-        altitude_aerodromo_ft, _ = consultar_terreno_e_pressao(
-            lat_aerodromo,
-            lon_aerodromo
-        )
+        with st.spinner("📍 Calculando diferença altimétrica do aeródromo..."):
+            altitude_aerodromo_ft, _ = consultar_terreno_e_pressao(lat_aerodromo, lon_aerodromo)
+            altitude_alvo_ft_ref = float(st.session_state.get("altitude_ft", 0.0))
 
-        altitude_alvo_ft_ref = float(st.session_state.get("altitude_ft", 0.0))
+            st.session_state.altitude_aerodromo_partida_ft = altitude_aerodromo_ft
 
-        st.session_state.altitude_aerodromo_partida_ft = altitude_aerodromo_ft
-
-        if altitude_aerodromo_ft is not None:
-            st.session_state.altimetro_aerodromo_alvo_ft = (
-                altitude_aerodromo_ft - altitude_alvo_ft_ref
-            )
-        else:
-            st.session_state.altimetro_aerodromo_alvo_ft = None
+            if altitude_aerodromo_ft is not None:
+                st.session_state.altimetro_aerodromo_alvo_ft = (altitude_aerodromo_ft - altitude_alvo_ft_ref)
+                st.success("✅ Diferença altimétrica calculada!")
+            else:
+                st.session_state.altimetro_aerodromo_alvo_ft = None
+                st.error("❌ Falha ao buscar altitude do aeródromo. Tente novamente.")
 
     # -----------------------------
     # RESULTADOS
