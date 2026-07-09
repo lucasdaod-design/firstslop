@@ -1706,6 +1706,30 @@ if aba_ativa == "Cálculo da Distância para Velame Aberto":
 
     st.markdown("##### Aeródromo de partida")
 
+    # --- AERÓDROMOS PRÉ-CADASTRADOS (VELAME ABERTO) ---
+    aeros_cadastrados_va = {
+        "Personalizado / Outro": None,
+        "Aeródromo de Goiânia": {"lat": -16.630929, "lon": -49.217527},
+        "Skydive Cerrado": {"lat": -16.362042, "lon": -48.928371}
+    }
+    
+    aero_selecionado_va = st.selectbox(
+        "Aeródromos Conhecidos", 
+        list(aeros_cadastrados_va.keys()),
+        help="Selecione um aeródromo salvo para preencher as coordenadas e o mapa automaticamente.",
+        key="sel_aero_conhecido_va"
+    )
+    
+    if aero_selecionado_va != "Personalizado / Outro" and st.session_state.get("ultimo_aero_selecionado_va") != aero_selecionado_va:
+        st.session_state.lat_aerodromo_partida = aeros_cadastrados_va[aero_selecionado_va]["lat"]
+        st.session_state.lon_aerodromo_partida = aeros_cadastrados_va[aero_selecionado_va]["lon"]
+        st.session_state.mapa_aerodromo_rev += 1
+        st.session_state.ultimo_aero_selecionado_va = aero_selecionado_va
+        st.rerun()
+    elif aero_selecionado_va == "Personalizado / Outro":
+        st.session_state.ultimo_aero_selecionado_va = "Personalizado / Outro"
+    # --------------------------------------------------
+
     with st.form("form_busca_aerodromo"):
         busca_aerodromo = st.text_input(
             "Buscar aeródromo/localidade de partida",
