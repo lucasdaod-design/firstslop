@@ -1654,51 +1654,6 @@ if aba_ativa == "Cálculo da Distância para Velame Aberto":
         except Exception as e:
             st.error(str(e))
 
-    st.divider()
-    st.markdown("#### 📍 Consulta do PS e Aeródromo")
-
-    # -----------------------------
-    # PS
-    # -----------------------------
-
-    ps_disponivel = "ps_lat" in st.session_state and "ps_lon" in st.session_state
-
-    if not ps_disponivel:
-        st.warning(
-            "Coordenada do PS ainda não registrada. "
-            "Gere o KMZ ou registre o PS antes de consultar altitude e DAA/QFE do PS."
-        )
-    else:
-        lat_padrao_consulta = float(st.session_state.ps_lat)
-        lon_padrao_consulta = float(st.session_state.ps_lon)
-
-        st.markdown("##### Ponto de Saída")
-
-        c_ps_lat, c_ps_lon = st.columns(2)
-
-        with c_ps_lat:
-            lat_consulta = st.number_input(
-                "Latitude do PS",
-                value=lat_padrao_consulta,
-                step=0.0001,
-                format="%.6f",
-                key=f"lat_consulta_ps_{round(lat_padrao_consulta, 6)}"
-            )
-
-        with c_ps_lon:
-            lon_consulta = st.number_input(
-                "Longitude do PS",
-                value=lon_padrao_consulta,
-                step=0.0001,
-                format="%.6f",
-                key=f"lon_consulta_ps_{round(lon_padrao_consulta, 6)}"
-            )
-
-        st.success("Coordenada do PS carregada automaticamente.")
-        st.caption(
-            f"PS: {lat_consulta:.6f}, {lon_consulta:.6f} | "
-            f"Origem: {st.session_state.get('ps_origem', 'não informada')}"
-        )
 
        # -----------------------------
     # AERÓDROMO
@@ -2215,6 +2170,53 @@ if aba_ativa == "Calculadora dos Pontos de Controle":
         if st.button("🗑️ Limpar Todos os Pontos"):
             st.session_state.pontos_controle = []
             st.rerun()
+
+        st.divider()
+    st.markdown("#### 📍 Consulta do PS e Aeródromo")
+
+    # -----------------------------
+    # PS
+    # -----------------------------
+
+    ps_disponivel = "ps_lat" in st.session_state and "ps_lon" in st.session_state
+
+    if not ps_disponivel:
+        st.warning(
+            "Coordenada do PS ainda não registrada. "
+            "Gere o KMZ ou registre o PS antes de consultar altitude e DAA/QFE do PS."
+        )
+    else:
+        lat_padrao_consulta = float(st.session_state.ps_lat)
+        lon_padrao_consulta = float(st.session_state.ps_lon)
+
+        st.markdown("##### Ponto de Saída")
+
+        c_ps_lat, c_ps_lon = st.columns(2)
+
+        with c_ps_lat:
+            lat_consulta = st.number_input(
+                "Latitude do PS",
+                value=lat_padrao_consulta,
+                step=0.0001,
+                format="%.6f",
+                key=f"lat_consulta_ps_{round(lat_padrao_consulta, 6)}"
+            )
+
+        with c_ps_lon:
+            lon_consulta = st.number_input(
+                "Longitude do PS",
+                value=lon_padrao_consulta,
+                step=0.0001,
+                format="%.6f",
+                key=f"lon_consulta_ps_{round(lon_padrao_consulta, 6)}"
+            )
+
+        st.success("Coordenada do PS carregada automaticamente.")
+        st.caption(
+            f"PS: {lat_consulta:.6f}, {lon_consulta:.6f} | "
+            f"Origem: {st.session_state.get('ps_origem', 'não informada')}"
+        )
+
     # -----------------------------
     # EXPORTAÇÃO KMZ (GERAL / VELAME ABERTO)
     # -----------------------------
