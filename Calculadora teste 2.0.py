@@ -565,15 +565,34 @@ def consultar_terreno_e_pressao(lat, lon):
 
     # 2. Busca de pressão QFE (Open-Meteo)
     try:
-        url_pressao = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=surface_pressure"
+        url_pressao = (
+            "https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            "&current=surface_pressure"
+            "&forecast_days=1"
+            "&timezone=auto"
+        )
+
         resp_pressao = requests.get(url_pressao, headers=headers, timeout=8)
         resp_pressao.raise_for_status()
         dados_pressao = resp_pressao.json()
 
-        if "current" in dados_pressao and "surface_pressure" in dados_pressao["current"]:
-            qfe_hpa = float(dados_pressao["current"]["surface_pressure"])
-    except Exception:
+        valor_qfe = (
+            dados_pressao
+            .get("current", {})
+            .get("surface_pressure")
+        )
+
+        if valor_qfe is not None:
+            qfe_hpa = float(valor_qfe)
+            st.session_state.qfe_erro_debug = ""
+        else:
+            qfe_hpa = None
+            st.session_state.qfe_erro_debug = str(dados_pressao)
+
+    except Exception as e:
         qfe_hpa = None
+        st.session_state.qfe_erro_debug = str(e)
 
     return altitude_ft, qfe_hpa
 
@@ -1860,9 +1879,18 @@ if aba_ativa == "Cálculo da Distância para Velame Aberto":
                 st.session_state.qfe_consulta_hpa = qfe_ps_hpa
                 
                 if altitude_ps_ft is None and qfe_ps_hpa is None:
-                    st.error("❌ Falha de comunicação com o servidor meteorológico (Open-Meteo). Tente novamente.")
+                    st.error("❌ Falha total na consulta: não foi possível obter altitude nem DAA/QFE.")
+                elif altitude_ps_ft is not None and qfe_ps_hpa is None:
+                    st.warning(
+                        "⚠️ Altitude atualizada, mas o DAA/QFE não foi retornado pela API meteorológica. "
+                        "Tente novamente em alguns segundos."
+                    )
+                elif altitude_ps_ft is None and qfe_ps_hpa is not None:
+                    st.warning(
+                        "⚠️ DAA/QFE atualizado, mas a altitude do terreno não foi retornada."
+                    )
                 else:
-                    st.success("✅ DAA e Altitude atualizados na tela!")
+                    st.success("✅ Altitude e DAA/QFE atualizados na tela!")
 
     if calcular_altimetria:
         with st.spinner("📍 Calculando diferença altimétrica do aeródromo..."):
@@ -1928,7 +1956,10 @@ if aba_ativa == "Cálculo da Distância para Velame Aberto":
         else:
             st.metric("Diferença Altimétrica", "—")
 
-    st.caption("Fonte de consulta: Open-Meteo Elevation API e Open-Meteo Forecast Surface Pressure.")    
+    st.caption("Fonte de consulta: Open-Meteo Elevation API e Open-Meteo Forecast Surface Pressure.")
+    if st.session_state.get("qfe_erro_debug"):
+        with st.expander("🔎 Debug da consulta DAA/QFE"):
+            st.code(st.session_state.qfe_erro_debug)    
     with st.expander("Salvar novo perfil"):
         with st.form("form_salvar_perfil_velame", clear_on_submit=True):
             novo_nome = st.text_input(
